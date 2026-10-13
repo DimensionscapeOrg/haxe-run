@@ -1,6 +1,7 @@
 /* haxe.run playground front end.
- * The compiler behind this is assets/compiler-stub.js. Swap that file for the
- * real hxc worker and nothing here needs to change.
+ * Talks to the compiler only through the Worker messages in WORKER_CONTRACT.md:
+ * the real one is assets/hxc-worker.js, and ?worker=stub swaps in
+ * assets/compiler-stub.js so the UI can be worked on without it.
  */
 (function () {
   "use strict";
@@ -18,8 +19,7 @@
   // target whose output can actually run in a browser tab (directly, and for
   // OpenFL through Lime's html5 backend). The native/source targets
   // (cpp, hl, python, php, lua) compile but can't run here, so offering them
-  // would only mislead. Program execution itself can use one of two engines
-  // (see ENGINES): the compiled JS, or hxc's authentic interpreter (eval).
+  // would only mislead.
   var TARGETS = [
     { id: "js", label: "JavaScript", lang: "javascript", codegen: true }
   ];
@@ -98,13 +98,16 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "9";
+  var ASSET_VERSION = "10";
 
   var worker = null;      // primary: the Worker, where compiles normally run
   var fallback = null;    // main-thread engine, built on demand (see retryOnFallback)
   var assets = null;      // { wasmModule, data }, fetched and compiled once
   var bootTimer = null;
   var retriedOnce = false;
+  var warmedUp = false;
+  var WARMUP_SRC = "class Main { static function main() { var a = [for (i in 0...3) i]; " +
+                   "trace(a.map(function (x) return x * 2).join(',')); } }";
 
   /* Boot: fetch and compile the binaries once, then hand them to a Worker.
    * Owning the assets here (rather than letting each emscripten instance fetch
@@ -301,6 +304,14 @@
 
     var q = state.queue;
     state.queue = [];
+    // The first compile on a new page is several times slower than the ones
+    // after it while the browser optimizes the compiler. If nothing is waiting,
+    // spend that on a throwaway compile now rather than on the user's first Run.
+    if (!q.length && !warmedUp && !USE_STUB) {
+      warmedUp = true;
+      ask("compile", { files: { "Main.hx": WARMUP_SRC }, main: "Main", target: "js",
+                       options: DEFAULT_OPTIONS });
+    }
     q.forEach(function (req) { dispatch(req); });
   }
 
@@ -360,6 +371,129 @@
     });
   }
 
+  /* Completion, hover and signature help run on a Worker of their own, so a
+   * Run never waits behind keystrokes. It is also disposable on purpose: in
+   * this build a compiler instance slows down sharply after a handful of
+   * display requests (about 50 ms each at first, then several seconds), while
+   * compiles are unaffected. A fresh instance only costs an instantiate of the
+   * module already in hand, so this one is replaced every few requests.
+   *
+   * Requests are coalesced per kind: while one is in flight, a newer request
+   * of the same kind replaces the waiting one, which resolves empty. Fast
+   * typing only ever costs the latest keystroke. */
+  var DISPLAY_RECYCLE_AFTER = 3;
+  var DISPLAY_SLOW_MS = 800;
+  var DISPLAY_TIMEOUT_MS = 8000;
+  var DISPLAY_ORDER = ["complete", "signature", "hover"];
+  // Each instance holds its own ~270 MB heap; skip the second one on phones.
+  var DISPLAY_ENABLED = !USE_STUB &&
+    !(window.matchMedia && matchMedia("(pointer: coarse)").matches && innerWidth < 820);
+
+  var display = { worker: null, ready: false, served: 0, busy: null, waiting: {}, dead: false };
+
+  function emptyDisplay(kind) {
+    if (kind === "complete") return { items: [] };
+    if (kind === "hover") return { value: null };
+    return { label: "", params: [], activeParam: 0 };
+  }
+
+  function askDisplay(kind, payload) {
+    if (USE_STUB) return ask(kind, payload);
+    return new Promise(function (resolve) {
+      if (!DISPLAY_ENABLED || display.dead || !assets) return resolve(emptyDisplay(kind));
+      var prev = display.waiting[kind];
+      if (prev) prev.resolve(emptyDisplay(kind));
+      display.waiting[kind] = { kind: kind, payload: payload, resolve: resolve };
+      pumpDisplay();
+    });
+  }
+
+  function pumpDisplay() {
+    if (display.busy) return;
+    if (!display.worker) { spawnDisplayWorker(); return; }
+    if (!display.ready) return;
+
+    var next = null;
+    for (var i = 0; i < DISPLAY_ORDER.length && !next; i++) {
+      next = display.waiting[DISPLAY_ORDER[i]] || null;
+      if (next) delete display.waiting[DISPLAY_ORDER[i]];
+    }
+    if (!next) return;
+
+    var id = ++state.seq;
+    display.busy = {
+      id: id, kind: next.kind, resolve: next.resolve,
+      timer: setTimeout(function () { recycleDisplay(); }, DISPLAY_TIMEOUT_MS)
+    };
+    var wire = { id: id, kind: next.kind };
+    for (var k in next.payload) wire[k] = next.payload[k];
+    display.worker.postMessage(wire);
+  }
+
+  function spawnDisplayWorker() {
+    try {
+      display.worker = new Worker("assets/hxc-worker.js?v=" + ASSET_VERSION);
+    } catch (err) {
+      display.dead = true;
+      return;
+    }
+    display.ready = false;
+    display.served = 0;
+    display.worker.onmessage = function (e) {
+      var msg = e.data || {};
+      if (msg.fatal) { display.dead = true; recycleDisplay(); return; }
+      if (msg.ready) { display.ready = true; pumpDisplay(); return; }
+      if (msg.recycle) { recycleDisplay(); return; }
+      if (msg.phase !== undefined || msg.note !== undefined) return;
+      finishDisplay(msg);
+    };
+    display.worker.onerror = function () { recycleDisplay(); };
+    display.worker.postMessage({ kind: "init", wasmModule: assets.wasmModule, data: assets.data });
+  }
+
+  function finishDisplay(msg) {
+    var b = display.busy;
+    if (!b || msg.id !== b.id) return;
+    clearTimeout(b.timer);
+    display.busy = null;
+    b.resolve(msg);
+    display.served++;
+    if (display.served >= DISPLAY_RECYCLE_AFTER || msg.timeMs > DISPLAY_SLOW_MS) recycleDisplay();
+    else pumpDisplay();
+  }
+
+  // Throw the instance away and stand up the next one straight away, so it is
+  // ready by the next keystroke.
+  function recycleDisplay() {
+    if (display.worker) { try { display.worker.terminate(); } catch (e) {} }
+    display.worker = null;
+    display.ready = false;
+    if (display.busy) {
+      clearTimeout(display.busy.timer);
+      display.busy.resolve(emptyDisplay(display.busy.kind));
+      display.busy = null;
+    }
+    if (display.dead) {
+      DISPLAY_ORDER.forEach(function (k) {
+        if (display.waiting[k]) display.waiting[k].resolve(emptyDisplay(k));
+      });
+      display.waiting = {};
+      return;
+    }
+    spawnDisplayWorker();
+  }
+
+  function displayPayload(model, position) {
+    return {
+      files: allFiles(),
+      file: model.uri.path.replace(/^\//, ""),
+      offset: model.getOffsetAt(position),
+      main: entryModule(),
+      target: state.target,
+      options: state.options
+    };
+  }
+
   /* ------------------------------------------------------- boot / status UI */
 
   function setCompilerStatus(kind, text) {
@@ -383,6 +517,7 @@
       }
     } else if (bar) {
       bar.parentNode.classList.add("indeterminate");
+      if (msg.loaded) hint.textContent = fmtBytes(msg.loaded);
     }
     setCompilerStatus("booting", msg.phase ? msg.phase : "loading compiler");
   }
@@ -780,12 +915,12 @@
     return p;
   }
 
-  // hxc emits a "// Generated by Haxe 4.3.x" banner (it targets 4.3 parity).
-  // Present it under the hx+ toolchain's own name in the playground.
+  // hxc emits haxe's "// Generated by Haxe 4.3.x" banner, because its output
+  // matches haxe's. Say which compiler actually produced it.
   function rebrand(code) {
     return String(code || "").replace(
-      /^\/\/ Generated by Haxe [\d.]+/m,
-      "// Generated by hxc 1.0 (haxe 4.3)"
+      /^\/\/ Generated by Haxe ([\d.]+)/m,
+      "// Generated by hxc (Haxe $1 compatible)"
     );
   }
 
@@ -1515,14 +1650,12 @@
       smoothScrolling: true
     });
 
-    var fileOf = function (model) { return model.uri.path.replace(/^\//, ""); };
-
     monaco.languages.registerCompletionItemProvider("haxe", {
-      triggerCharacters: [".", ":", " "],
+      // Typing a word asks on its own; "." is the one character that should
+      // open the list before anything is typed after it.
+      triggerCharacters: ["."],
       provideCompletionItems: function (model, position) {
-        return ask("complete", {
-          files: allFiles(), file: fileOf(model), offset: model.getOffsetAt(position)
-        }).then(function (res) {
+        return askDisplay("complete", displayPayload(model, position)).then(function (res) {
           var word = model.getWordUntilPosition(position);
           var range = {
             startLineNumber: position.lineNumber, endLineNumber: position.lineNumber,
@@ -1544,9 +1677,7 @@
 
     monaco.languages.registerHoverProvider("haxe", {
       provideHover: function (model, position) {
-        return ask("hover", {
-          files: allFiles(), file: fileOf(model), offset: model.getOffsetAt(position)
-        }).then(function (res) {
+        return askDisplay("hover", displayPayload(model, position)).then(function (res) {
           return res.value ? { contents: [{ value: res.value }] } : null;
         });
       }
@@ -1555,9 +1686,8 @@
     monaco.languages.registerSignatureHelpProvider("haxe", {
       signatureHelpTriggerCharacters: ["(", ","],
       provideSignatureHelp: function (model, position) {
-        return ask("signature", {
-          files: allFiles(), file: fileOf(model), offset: model.getOffsetAt(position)
-        }).then(function (res) {
+        return askDisplay("signature", displayPayload(model, position)).then(function (res) {
+          if (!res.label) return null;
           return {
             value: {
               signatures: [{

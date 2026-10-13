@@ -65,14 +65,18 @@
   /* --------------------------------------------------------------- compile */
 
   function normalizeFiles(files) {
-    if (!files || typeof files !== "object") throw new Error("files must be an object of { path: source }");
+    var shape = 'files must be an object of { path: source }, e.g. { "Main.hx": "class Main {...}" }';
+    if (!files || typeof files !== "object" || Array.isArray(files)) throw new TypeError(shape);
     var names = Object.keys(files);
-    if (!names.length) throw new Error("files is empty");
+    if (!names.length) throw new TypeError("files is empty; " + shape);
     var out = {};
     names.forEach(function (n) {
+      if (typeof files[n] !== "string") {
+        throw new TypeError('files["' + n + '"] is ' + typeof files[n] + ", not source text; " + shape);
+      }
       var path = String(n).replace(/^\/+/, "");
       if (!/\.hx$/i.test(path)) path += ".hx";
-      out[path] = String(files[n]);
+      out[path] = files[n];
     });
     return out;
   }

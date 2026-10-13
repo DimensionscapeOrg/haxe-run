@@ -119,12 +119,165 @@
     if (opts.noInline) args.push("--no-inline");
     if (opts.noOpt)    args.push("--no-opt");
     if (opts.analyzer === true) args.push("-D", "analyzer-optimize");
+    if (opts.nullSafety) {
+      // Only the user's code: top-level modules by name, packages recursively.
+      // Pointing it at "" would hold the standard library to strict mode too.
+      var roots = {};
+      Object.keys(msg.files || {}).forEach(function (p) {
+        var first = p.replace(/\.hx$/, "").split("/")[0];
+        if (/^[A-Za-z_]\w*$/.test(first)) roots[first] = true;
+      });
+      Object.keys(roots).forEach(function (r) {
+        args.push("--macro", "nullSafety('" + r + "', Strict)");
+      });
+    }
     Object.keys(opts.defines || {}).forEach(function (d) {
       var v = opts.defines[d];
       args.push("-D", v === true ? d : (d + "=" + v));
     });
     return args;
   }
+
+  /* ----------------------------------------------------------------- display
+   * Completion, hover and signature help use the compiler's display mode
+   * (`--display file@byteOffset[@mode]`), the same protocol editors use with
+   * haxe. Results come back as XML (fields, toplevel, type) or JSON
+   * (signature) on stderr. */
+
+  var DISPLAY_KINDS = { complete: true, hover: true, signature: true };
+
+  // Hovering these would only show the type of the enclosing expression.
+  var NO_HOVER = /^(var|final|function|class|interface|enum|abstract|typedef|static|public|private|inline|override|extern|macro|dynamic|return|if|else|for|while|do|switch|case|default|break|continue|try|catch|throw|new|import|using|package|extends|implements|in|cast|untyped|true|false|null|this|super)$/;
+
+  function emptyDisplay(msg) {
+    if (msg.kind === "complete") return { id: msg.id, items: [] };
+    if (msg.kind === "hover") return { id: msg.id, value: null };
+    return { id: msg.id, label: "", params: [], activeParam: 0 };
+  }
+
+  function unescapeXml(s) {
+    return String(s).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"')
+      .replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&");
+  }
+
+  function attr(attrs, name) {
+    var m = new RegExp("\\b" + name + '="([^"]*)"').exec(attrs);
+    return m ? unescapeXml(m[1]) : "";
+  }
+
+  var FIELD_KINDS = { "var": "field", method: "function", type: "class", "package": "module" };
+
+  function toplevelKind(k, type) {
+    if (k === "local" || k === "global") return "variable";
+    if (k === "member" || k === "static") return /->/.test(type) ? "function" : "field";
+    if (k === "enum" || k === "enumabstract") return "field";
+    if (k === "type") return "class";
+    if (k === "package") return "module";
+    if (k === "literal") return "keyword";
+    return "variable";
+  }
+
+  function parseCompletion(text) {
+    var items = [], seen = {}, m;
+    if (text.indexOf("<list>") >= 0) {
+      var re = /<i n="([^"]*)" k="([^"]*)"[^>]*>\s*<t>([\s\S]*?)<\/t>\s*<d>([\s\S]*?)<\/d>\s*<\/i>/g;
+      while ((m = re.exec(text))) {
+        var name = unescapeXml(m[1]);
+        if (seen[name]) continue;
+        seen[name] = true;
+        items.push({ label: name, kind: FIELD_KINDS[m[2]] || "field",
+                     detail: unescapeXml(m[3]), doc: unescapeXml(m[4]).trim() });
+      }
+    } else if (text.indexOf("<il>") >= 0) {
+      var tre = /<i k="([^"]*)"([^>]*)>([^<]*)<\/i>/g;
+      while ((m = tre.exec(text))) {
+        var label = unescapeXml(m[3]), type = attr(m[2], "t");
+        if (!label || seen[label]) continue;
+        seen[label] = true;
+        items.push({ label: label, kind: toplevelKind(m[1], type),
+                     detail: type || attr(m[2], "p"), doc: "" });
+      }
+    }
+    return items;
+  }
+
+  // Haxe positions are UTF-8 byte offsets; the editor counts UTF-16 units.
+  function byteOffset(src, charOffset) {
+    var n = 0;
+    for (var i = 0; i < charOffset; i++) {
+      var c = src.charCodeAt(i);
+      if (c < 0x80) n += 1;
+      else if (c < 0x800) n += 2;
+      else if (c >= 0xD800 && c <= 0xDBFF) { n += 4; i++; }
+      else n += 3;
+    }
+    return n;
+  }
+
+  Engine.prototype._display = function (msg) {
+    var t0 = Date.now();
+    var files = msg.files || {};
+    var src = files[msg.file];
+    var empty = emptyDisplay(msg);
+    // OpenFL projects type the whole framework from source on every request,
+    // which is far too slow to answer keystrokes.
+    if (typeof src !== "string" || usesOpenFL(files)) return empty;
+
+    var offset = Math.max(0, Math.min(src.length, msg.offset | 0));
+    var at = offset, mode = "";
+    var wordStart = offset;
+    while (wordStart > 0 && /\w/.test(src.charAt(wordStart - 1))) wordStart--;
+
+    if (msg.kind === "complete") {
+      // Ask at the start of the word being typed and let the editor filter:
+      // the compiler reports `s.ind` as an error, not as a completion.
+      at = wordStart;
+      if (!(wordStart > 0 && src.charAt(wordStart - 1) === ".")) mode = "@toplevel";
+    } else if (msg.kind === "hover") {
+      var wordEnd = offset;
+      while (wordEnd < src.length && /\w/.test(src.charAt(wordEnd))) wordEnd++;
+      var word = src.slice(wordStart, wordEnd);
+      if (!word || /^\d/.test(word) || NO_HOVER.test(word)) return empty;
+      mode = "@type";
+    } else {
+      mode = "@signature";
+    }
+
+    var args = buildArgs(msg, false).concat([
+      "--no-output", "--display", msg.file + "@" + byteOffset(src, at) + mode
+    ]);
+    var m = this._mod;
+    this._out.length = 0;
+    this._writeFiles(files, false);
+    try { m.callMain(args.slice()); } catch (err) {
+      if (classify(err, "")) { this.poisoned = true; return empty; }
+    }
+    var text = this._out.map(function (l) { return l.text; }).join("\n");
+    var res = { id: msg.id, timeMs: Date.now() - t0 };
+
+    if (msg.kind === "complete") {
+      res.items = parseCompletion(text);
+    } else if (msg.kind === "hover") {
+      var tm = /<type[^>]*>\s*([\s\S]*?)\s*<\/type>/.exec(text);
+      var type = tm ? unescapeXml(tm[1]).trim() : "";
+      res.value = type ? "```haxe\n" + type + "\n```" : null;
+    } else {
+      res.label = ""; res.params = []; res.activeParam = 0;
+      var j = text.indexOf('{"signatures"');
+      if (j >= 0) {
+        try {
+          var sig = JSON.parse(text.slice(j, text.lastIndexOf("}") + 1));
+          var s = (sig.signatures || [])[sig.activeSignature || 0];
+          if (s) {
+            res.label = s.label || "";
+            res.params = (s.parameters || []).map(function (p) { return p.label; });
+            res.activeParam = sig.activeParameter || 0;
+          }
+        } catch (e) {}
+      }
+    }
+    return res;
+  };
 
   // Which stack died. "native" is recoverable by retrying on a thread with a
   // bigger call stack; "trap" is not, but both poison the instance.
@@ -200,9 +353,11 @@
     var self = this;
     msg = msg || {};
 
-    if (msg.kind === "complete")  { this._cfg.emit({ id: msg.id, items: [] }); return; }
-    if (msg.kind === "hover")     { this._cfg.emit({ id: msg.id, value: null }); return; }
-    if (msg.kind === "signature") { this._cfg.emit({ id: msg.id, label: "", params: [], activeParam: 0 }); return; }
+    if (DISPLAY_KINDS[msg.kind]) {
+      this.ready.then(function () { self._cfg.emit(self._display(msg)); })
+        .catch(function () { self._cfg.emit(emptyDisplay(msg)); });
+      return;
+    }
     if (msg.kind !== "compile")   { this._cfg.emit({ id: msg.id, error: "unknown request: " + msg.kind }); return; }
 
     this.ready.then(function () { self._cfg.emit(self._compile(msg)); })
@@ -217,6 +372,31 @@
       });
   };
 
+  // /work holds exactly the files of this request. Anything left over from an
+  // earlier compile would still resolve, so a module the user deleted or
+  // renamed would keep compiling.
+  Engine.prototype._writeFiles = function (files, openfl) {
+    var FS = this._mod.FS;
+    (function clear(dir) {
+      FS.readdir(dir).forEach(function (name) {
+        if (name === "." || name === "..") return;
+        var p = dir + "/" + name;
+        if (FS.isDir(FS.stat(p).mode)) { clear(p); FS.rmdir(p); }
+        else FS.unlink(p);
+      });
+    })("/work");
+
+    Object.keys(files).forEach(function (path) {
+      var full = "/work/" + path;
+      var parts = full.slice(0, full.lastIndexOf("/")).split("/").filter(Boolean), cur = "";
+      parts.forEach(function (p) { cur += "/" + p; try { FS.mkdir(cur); } catch (e) {} });
+      FS.writeFile(full, files[path]);
+    });
+    if (openfl && global.HXR_OPENFL_BOOT) {
+      FS.writeFile("/work/ApplicationMain.hx", global.HXR_OPENFL_BOOT);
+    }
+  };
+
   Engine.prototype._compile = function (msg) {
     var t0 = Date.now();
     var files = msg.files || {};
@@ -229,20 +409,9 @@
     var openfl = usesOpenFL(files);
     var args = buildArgs(msg, openfl);
 
-    var m = this._mod, FS = m.FS;
+    var m = this._mod;
     this._out.length = 0;
-
-    Object.keys(files).forEach(function (path) {
-      var full = "/work/" + path;
-      var dir = full.slice(0, full.lastIndexOf("/"));
-      var parts = dir.split("/").filter(Boolean), cur = "";
-      parts.forEach(function (p) { cur += "/" + p; try { FS.mkdir(cur); } catch (e) {} });
-      FS.writeFile(full, files[path]);
-    });
-    try { FS.unlink("/work/" + outName); } catch (e) {}
-    if (openfl && global.HXR_OPENFL_BOOT) {
-      FS.writeFile("/work/ApplicationMain.hx", global.HXR_OPENFL_BOOT);
-    }
+    this._writeFiles(files, openfl);
 
     var spBefore = this.sp();
     var exitCode = 0, threw = null;

@@ -216,7 +216,8 @@ Nothing fetched is executed until Run is pressed.
 - Compiles are serialized; overlapping calls queue rather than run in parallel.
 - Very large output (an OpenFL build is a few megabytes) is returned in full but
   not syntax-highlighted in the UI.
-- The compiler holds state between compiles in one page session. Reload to reset.
+- Each compile sees exactly the files you pass. Nothing carries over from earlier
+  calls, so a module you leave out is gone, not cached.
 
 ## Discovery
 

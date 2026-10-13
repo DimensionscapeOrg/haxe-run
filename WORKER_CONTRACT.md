@@ -205,6 +205,24 @@ Positions are 1-based line/column (not byte offsets). If hxc reports byte offset
 convert before sending. `file` must exactly equal the `files` key so the marker
 lands in the correct module.
 
+## How the playground answers display requests
+
+`complete`, `hover` and `signature` are answered with the compiler's display
+mode, `--display <file>@<byte offset>[@toplevel|@type|@signature]`, the same
+protocol editors use with haxe. Completion asks at the start of the word being
+typed (after a `.` for fields, `@toplevel` otherwise) and lets the editor filter,
+because `s.ind` is reported as an error rather than as a completion.
+
+They run on a second Worker, not the compile Worker, for two reasons. A Run
+never queues behind keystrokes. And in the current build an instance slows
+down sharply after a handful of display requests (about 50 ms each at first,
+then 3 to 4.5 seconds) while compiles are unaffected, so the display Worker is
+replaced every 3 requests, or after any request slower than 800 ms. A fresh
+instance costs about 35 ms to instantiate from the module already in hand.
+Requests are coalesced per kind, so fast typing only costs the latest one.
+OpenFL projects get no display answers until compiles there are cached; each
+one would take as long as a full OpenFL compile.
+
 ## Notes for the real compiler
 
 - **Warm state.** Completion/hover fire on nearly every keystroke. Keep a
@@ -252,6 +270,19 @@ of them need compiler source changes.
 Longer term, on the hxc side: make module loading an explicit worklist rather
 than recursion, and add a depth guard that emits a normal diagnostic instead of
 letting the engine raise `RangeError`.
+
+## Rebuilding the compiler
+
+After replacing `assets/hxc.wasm` / `assets/hxc.data`, regenerate
+`assets/hxc.json` with their unpacked sizes. GitHub Pages gzips both on the fly
+and reports the compressed size, so the boot progress bar takes its totals from
+that file. If it is stale the bar falls back to a byte count.
+
+```
+python -c "import os,json;print(json.dumps({f:os.path.getsize('assets/'+f) for f in ('hxc.wasm','hxc.data')},indent=2))" > assets/hxc.json
+```
+
+Also bump `ASSET_VERSION` in `app.js` and the `?v=` numbers in `index.html`.
 
 ## Swapping the stub for the real compiler
 
