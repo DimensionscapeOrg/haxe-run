@@ -98,13 +98,18 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "13";
+  var ASSET_VERSION = "14";
 
   var worker = null;      // primary: the Worker, where compiles normally run
   var fallback = null;    // main-thread engine, built on demand (see retryOnFallback)
   var assets = null;      // { wasmModule, data }, fetched and compiled once
   var bootTimer = null;
   var retriedOnce = false;
+  // Set once an OpenFL-sized build has overflowed the Worker. Some browsers
+  // (Firefox among them) give Workers too small a stack for those builds every
+  // time, so later ones go straight to the main thread instead of spending a
+  // failed attempt and a Worker restart first.
+  var heavyOnMainThread = false;
   var warmedUp = false;
   var warmupTries = 0;
   var WARMUP_MAX_TRIES = 5;
@@ -235,10 +240,8 @@
     // after this one, and must not also re-send this request to the new Worker.
     entry.via = "fallback";
 
-    if (!retriedOnce) {
-      retriedOnce = true;
-      toast("This compile needs the main thread; the page may pause briefly.");
-    }
+    if (HxcCore.usesOpenFL(entry.req.files || {})) heavyOnMainThread = true;
+    noteMainThread();
     // Keep the last few so a failure can be inspected after the fact.
     window.HXR_FAILURES = (window.HXR_FAILURES || []).slice(-4);
     window.HXR_FAILURES.push(msg);
@@ -257,6 +260,13 @@
         code: "overflow"
       }], outputs: {}, runnable: false, timeMs: 0, log: [], stats: {} });
     });
+  }
+
+  function noteMainThread() {
+    if (retriedOnce) return;
+    retriedOnce = true;
+    toast("This build is too deep for a background thread in this browser, so it runs " +
+          "on the page itself. The page will pause until it finishes.", 7000);
   }
 
   var fallbackPromise = null;
@@ -437,6 +447,13 @@
       for (var k in payload) req[k] = payload[k];
       req._resolve = resolve;
 
+      if (kind === "compile" && heavyOnMainThread && !req.warmup && HxcCore.usesOpenFL(req.files || {})) {
+        noteMainThread();
+        // Let the notice and the "compiling" state paint before the page blocks.
+        ensureFallback().then(function () { setTimeout(function () { dispatch(req, "fallback"); }, 60); },
+                              function () { if (state.ready) dispatch(req); else state.queue.push(req); });
+        return;
+      }
       if (state.ready) dispatch(req);
       else state.queue.push(req);   // flushed on ready
     });
@@ -1545,12 +1562,12 @@
     return Promise.resolve(false);
   }
 
-  function toast(text) {
+  function toast(text, ms) {
     var el = $("toast");
     el.textContent = text;
     el.classList.add("show");
     clearTimeout(toast._t);
-    toast._t = setTimeout(function () { el.classList.remove("show"); }, 2200);
+    toast._t = setTimeout(function () { el.classList.remove("show"); }, ms || 2200);
   }
 
   /* ----------------------------------------------------------------- theme */

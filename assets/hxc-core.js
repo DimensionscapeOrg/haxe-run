@@ -290,12 +290,17 @@
 
   // Which stack died. "native" is recoverable by retrying on a thread with a
   // bigger call stack; "trap" is not, but both poison the instance.
+  // Engines word these differently. Chromium: RangeError "Maximum call stack
+  // size exceeded", "memory access out of bounds". Firefox: InternalError "too
+  // much recursion", "index out of bounds". Safari: RangeError "Maximum call
+  // stack size exceeded", "Out of bounds memory access".
   function classify(err, text) {
     var s = String((err && (err.message || err)) || "") + "\n" + (text || "");
-    if (err instanceof RangeError || /maximum call stack|call stack size exceeded/i.test(s)) {
+    if (err instanceof RangeError || (err && err.name === "InternalError") ||
+        /maximum call stack|call stack size exceeded|too much recursion/i.test(s)) {
       return "native";
     }
-    if (/memory access out of bounds|unreachable executed|table index is out of bounds/i.test(s)) {
+    if (/memory access out of bounds|out of bounds memory access|index out of bounds|unreachable executed|unreachable code/i.test(s)) {
       return "trap";
     }
     return null;
