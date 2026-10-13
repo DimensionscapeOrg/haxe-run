@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- hx+ mark: four arrows converge on center; negative space forms the x.
+       Each arm is a single polygon so no antialiasing seams appear. -->
+  <g fill="#ff9d2e">
+    <polygon id="arm" points="227,48 285,48 285,136 352,136 256,232 160,136 227,136"/>
+    <use href="#arm" transform="rotate(90 256 256)"/>
+    <use href="#arm" transform="rotate(180 256 256)"/>
+    <use href="#arm" transform="rotate(270 256 256)"/>
+  </g>
+</svg>

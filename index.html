@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<title>haxe.run | Haxe playground</title>
+<meta name="description" content="Compile and run Haxe in your browser. Every target, live diagnostics, no server.">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/app.css?v=8">
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="#">
+    <img class="brand-logo" src="assets/logo.svg" alt="">
+    <span>haxe<span class="dot-run">.run</span></span>
+  </a>
+
+  <span id="compilerStatus" class="compiler-status status-booting" title="Compiler status">
+    <span class="status-dot"></span><span id="compilerStatusText">starting compiler</span>
+  </span>
+
+  <button id="backBtn" class="btn btn-docs" title="Back to playgrounds">&#8592; Playgrounds</button>
+
+  <span id="projectName" class="project-name">untitled</span>
+
+  <div class="bar-spacer"></div>
+
+  <select id="picker" class="control" aria-label="Load a sample"></select>
+
+  <button id="saveBtn" class="btn" title="Save to this browser  (Ctrl/Cmd+S)">Save</button>
+  <button id="deleteBtn" class="btn btn-danger hidden" title="Delete this saved sample">&#10005;</button>
+
+  <div class="options-wrap">
+    <button id="optionsBtn" class="btn" aria-expanded="false">Options</button>
+    <div id="optionsPanel" class="options-panel hidden">
+      <div class="opt-row">
+        <label for="optDce">Dead code elimination</label>
+        <select id="optDce" class="control control-sm">
+          <option value="std">std (default)</option>
+          <option value="no">no</option>
+          <option value="full">full</option>
+        </select>
+      </div>
+      <div class="opt-row">
+        <label for="optAnalyzer">Analyzer</label>
+        <select id="optAnalyzer" class="control control-sm">
+          <option value="on">on</option>
+          <option value="off">off</option>
+        </select>
+      </div>
+      <label class="opt-check"><input type="checkbox" id="optDebug"> Debug build (<code>-debug</code>)</label>
+      <label class="opt-check"><input type="checkbox" id="optNoInline"> Disable inline (<code>--no-inline</code>)</label>
+      <label class="opt-check"><input type="checkbox" id="optNoOpt"> Disable optimizations (<code>--no-opt</code>)</label>
+      <label class="opt-check"><input type="checkbox" id="optNullSafety"> Strict null safety</label>
+      <div class="opt-row opt-col">
+        <label for="optDefines">Defines, one per line</label>
+        <textarea id="optDefines" class="opt-defines" spellcheck="false" placeholder="my_flag&#10;level=3"></textarea>
+      </div>
+      <div class="opt-foot">
+        <span id="optSummary" class="opt-summary"></span>
+        <button id="optReset" class="btn btn-tiny">Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <button id="runBtn" class="btn btn-primary" title="Run  (Ctrl/Cmd+Enter)">
+    <span class="btn-icon">&#9654;</span> Run
+  </button>
+  <button id="shareBtn" class="btn" title="Copy a shareable link  (Ctrl/Cmd+Shift+S)">Share</button>
+  <a id="docsBtn" class="btn btn-docs" href="docs.html"
+     title="API docs: compile and run Haxe from code">Docs</a>
+  <button id="themeBtn" class="btn btn-icon-only" aria-label="Toggle theme">
+    <span class="tt-sun">&#9728;</span><span class="tt-moon">&#9790;</span>
+  </button>
+</header>
+
+<section id="dashboard" class="dashboard">
+  <div class="dash-inner">
+    <header class="dash-head">
+      <h1>Write Haxe. Run it here.</h1>
+      <p>The compiler runs in this tab, so nothing is sent to a server and nothing to install.
+         Pick a playground to start, or open an empty one.</p>
+    </header>
+
+    <div class="dash-section">
+      <div class="dash-section-head">
+        <h2>Examples</h2>
+      </div>
+      <div class="card-grid" id="exampleCards"></div>
+    </div>
+
+    <div class="dash-section" id="savedSection" hidden>
+      <div class="dash-section-head">
+        <h2>Saved in this browser</h2>
+        <span class="dash-hint">Stored locally. Clearing site data removes them.</span>
+      </div>
+      <div class="card-grid" id="savedCards"></div>
+    </div>
+  </div>
+</section>
+
+<main class="workspace">
+
+  <section class="pane pane-editor">
+    <div class="file-bar">
+      <div class="file-tabs" id="fileTabs" role="tablist"></div>
+      <button id="addFileBtn" class="file-add" title="New module">+</button>
+      <span id="editorStatus" class="pane-meta">ready</span>
+    </div>
+    <div id="editor" class="editor-host"></div>
+    <div class="problems" id="problems">
+      <div class="problems-head">
+        <span id="problemsCount">No problems</span>
+      </div>
+      <ul id="problemsList" class="problems-list"></ul>
+    </div>
+  </section>
+
+  <div class="splitter" id="splitter" role="separator" aria-label="Resize panes"></div>
+
+  <section class="pane pane-output">
+    <div class="tabs" id="tabs" role="tablist"></div>
+    <div class="output-host">
+      <pre id="outputCode" class="output-code"><code></code></pre>
+
+      <div id="previewView" class="preview hidden">
+        <div class="preview-head">
+          <span>Render surface</span>
+          <span class="preview-meta" id="previewMeta">sandboxed iframe,
+            <code>allow-scripts</code> only</span>
+          <button id="reloadPreview" class="btn btn-tiny">Reload</button>
+        </div>
+        <div class="preview-stage">
+          <iframe id="stage" class="stage" sandbox="allow-scripts" title="render surface"></iframe>
+        </div>
+      </div>
+
+      <div id="consoleView" class="console hidden">
+        <div class="console-head">
+          <span>Program output</span>
+          <button id="clearConsole" class="btn btn-tiny">Clear</button>
+        </div>
+        <div id="consoleLines" class="console-lines"></div>
+      </div>
+
+      <div id="logView" class="console hidden">
+        <div class="console-head">
+          <span>Compiler log</span>
+          <span class="console-meta-inline" id="logStats"></span>
+        </div>
+        <div id="logLines" class="console-lines"></div>
+      </div>
+    </div>
+    <div class="pane-foot">
+      <span id="compileMeta" class="pane-meta">not compiled yet</span>
+      <span class="pane-meta pane-meta-right" id="targetMeta"></span>
+    </div>
+  </section>
+
+</main>
+
+<iframe id="sandbox" class="sandbox" sandbox="allow-scripts" title="output sandbox"></iframe>
+
+<div id="bootOverlay" class="boot-overlay">
+  <div class="boot-card">
+    <img class="boot-logo" src="assets/logo.svg" alt="">
+    <div class="boot-title">Starting the hx+ compiler</div>
+    <div class="boot-sub" id="bootSub">downloading&#8230;</div>
+    <div class="boot-track"><div class="boot-bar" id="bootBar"></div></div>
+    <div class="boot-hint" id="bootHint">This runs entirely in your browser. Nothing is sent to a server.</div>
+    <button id="bootRetry" class="btn boot-retry hidden">Reload</button>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/examples.js?v=6"></script>
+<script src="assets/openfl-boot.js?v=8"></script>
+<script src="assets/hxc-assets.js?v=9"></script>
+<script src="assets/hxc-core.js?v=9"></script>
+<script src="assets/hxc-mainthread.js?v=9"></script>
+<script src="assets/app.js?v=31"></script>
+<script src="assets/agent-api.js?v=1"></script>
+</body>
+</html>

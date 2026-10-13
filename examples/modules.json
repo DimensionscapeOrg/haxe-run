@@ -1,0 +1,8 @@
+{
+  "name": "Multiple modules (from a manifest)",
+  "files": {
+    "Main.hx": "import geom.Shape;\nimport geom.Area;\n\nclass Main {\n    static function main() {\n        var shapes:Array<Shape> = [\n            Circle(2),\n            Rect(3, 4),\n            Group([Circle(1), Rect(10, 0.5)])\n        ];\n\n        for (s in shapes) {\n            trace(Area.describe(s) + \" -> \" + Area.of(s));\n        }\n    }\n}\n",
+    "geom/Shape.hx": "package geom;\n\nenum Shape {\n    Circle(radius:Float);\n    Rect(w:Float, h:Float);\n    Group(shapes:Array<Shape>);\n}\n",
+    "geom/Area.hx": "package geom;\n\nclass Area {\n    public static function of(s:Shape):Float {\n        return switch s {\n            case Circle(r): Math.PI * r * r;\n            case Rect(w, h): w * h;\n            case Group(items):\n                var total = 0.0;\n                for (item in items) total += of(item);\n                total;\n        }\n    }\n\n    public static function describe(s:Shape):String {\n        return switch s {\n            case Circle(_): \"circle\";\n            case Rect(_, _): \"rect\";\n            case Group(items): 'group of ${items.length}';\n        }\n    }\n}\n"
+  }
+}

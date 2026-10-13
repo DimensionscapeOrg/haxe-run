@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>haxe.run | API</title>
+<meta name="description" content="Compile and run Haxe programmatically from the haxe.run playground, with structured diagnostics.">
+<meta name="ai-api" content="window.haxeRun on haxe.run; machine-readable reference at /AGENTS.md and /llms.txt">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<style>
+  :root {
+    --bg:#0b0e14; --panel:#131826; --border:rgba(255,255,255,.09);
+    --text:#e7eaf0; --muted:#9aa3b2; --accent:#ff9d2e; --green:#5fd39a; --blue:#6fb7ff;
+    --mono:"Cascadia Code","SF Mono",Consolas,"Liberation Mono",Menlo,monospace;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+    color-scheme: dark;
+  }
+  :root[data-theme="light"] {
+    --bg:#fff; --panel:#f6f7f9; --border:rgba(20,28,45,.13);
+    --text:#1c2434; --muted:#5d6675; --accent:#d97a06; --green:#178c58; --blue:#1867c0;
+    color-scheme: light;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:var(--font); line-height:1.65; }
+
+  .bar {
+    position:sticky; top:0; z-index:10; height:52px; display:flex; align-items:center; gap:12px;
+    padding:0 20px; background:var(--bg); border-bottom:1px solid var(--border);
+  }
+  .brand { display:flex; align-items:center; gap:9px; font-family:var(--mono); font-weight:700;
+           color:var(--text); text-decoration:none; font-size:1.02rem; }
+  .brand img { width:22px; height:22px; }
+  .dot-run { color:var(--accent); }
+  .bar-spacer { flex:1; }
+  .bar a.btn {
+    display:inline-flex; align-items:center; height:34px; padding:0 14px; border-radius:7px;
+    border:1px solid var(--border); color:var(--muted); text-decoration:none;
+    font-size:.86rem; font-weight:500; white-space:nowrap;
+  }
+  .bar a.btn:hover { color:var(--text); }
+  .bar a.primary { background:var(--accent); border-color:var(--accent); color:#16100a; font-weight:600; }
+
+  .wrap { max-width:820px; margin:0 auto; padding:44px 20px 90px; }
+
+  .kicker { font-family:var(--mono); font-size:.72rem; font-weight:700; letter-spacing:.16em;
+            text-transform:uppercase; color:var(--accent); margin-bottom:10px; }
+
+  h1 { font-size:2rem; letter-spacing:-.02em; margin:0 0 14px; }
+  h2 { font-size:1.35rem; letter-spacing:-.01em; margin:44px 0 12px; padding-top:18px;
+       border-top:1px solid var(--border); }
+  h3 { font-size:1.05rem; margin:26px 0 8px; }
+  p { margin:0 0 14px; color:var(--muted); }
+  strong { color:var(--text); }
+  a { color:var(--accent); }
+  ul, ol { margin:0 0 14px 22px; color:var(--muted); }
+  li { margin-bottom:6px; }
+
+  code { font-family:var(--mono); font-size:.86em; background:rgba(255,157,46,.12);
+         color:var(--accent); padding:.1em .35em; border-radius:5px; }
+  pre { background:#131826; border:1px solid rgba(255,255,255,.08); border-radius:10px;
+        padding:16px 18px; overflow-x:auto; margin:0 0 18px; }
+  pre code { background:none; color:#d7dce6; padding:0; font-size:.84rem; line-height:1.6; }
+
+  table { width:100%; border-collapse:collapse; margin:0 0 18px; font-size:.92rem; }
+  th, td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--border); }
+  th { color:var(--text); font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; }
+  td { color:var(--muted); }
+  td code { white-space:nowrap; }
+
+  blockquote { border-left:3px solid var(--accent); padding-left:16px; margin:0 0 18px; color:var(--muted); }
+
+  .toc { background:var(--panel); border:1px solid var(--border); border-radius:10px;
+         padding:16px 20px; margin-bottom:34px; }
+  .toc-title { font-size:.75rem; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+               color:var(--muted); margin-bottom:10px; }
+  .toc ul { margin:0; list-style:none; columns:2; column-gap:24px; }
+  .toc li { margin-bottom:5px; }
+  .toc a { text-decoration:none; color:var(--muted); font-size:.9rem; }
+  .toc a:hover { color:var(--accent); }
+
+  .note { background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--accent);
+          border-radius:8px; padding:14px 18px; margin:0 0 22px; }
+  .note p { margin:0; font-size:.93rem; }
+
+  footer { border-top:1px solid var(--border); margin-top:50px; padding-top:22px;
+           color:var(--muted); font-size:.85rem; }
+  @media (max-width:640px) { .toc ul { columns:1; } }
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <a class="brand" href="index.html">
+    <img src="assets/logo.svg" alt="">
+    <span>haxe<span class="dot-run">.run</span></span>
+  </a>
+  <div class="bar-spacer"></div>
+  <a class="btn primary" href="index.html">Open the playground</a>
+</header>
+
+<div class="wrap">
+  <p class="kicker">API</p>
+  <h1 id="top">Driving haxe.run from code</h1>
+
+  <div class="note">
+    <p>Everything the editor does is available programmatically through
+    <code>window.haxeRun</code>: compile Haxe, run it, and read structured diagnostics.
+    The API also describes itself at runtime, so <code>haxeRun.help()</code> in the console
+    on the playground is a fine place to start.</p>
+  </div>
+
+  <div class="toc" id="toc" hidden>
+    <div class="toc-title">Contents</div>
+    <ul id="tocList"></ul>
+  </div>
+
+  <main id="doc">Loading documentation…</main>
+
+  <footer>
+    Part of <a href="index.html">haxe.run</a>. The compiler is hxc; the language is
+    <a href="https://hxplus.org">hx+</a>, a strict superset of Haxe 4.3.
+    <br>
+    Machine-readable copies of this reference:
+    <a href="AGENTS.md">AGENTS.md</a>, <a href="llms.txt">llms.txt</a>.
+  </footer>
+</div>
+
+<script>
+/* A small markdown renderer: enough for AGENTS.md (headings, fenced code, tables,
+   lists, blockquotes, inline code/links/bold). No dependencies, so this page has
+   no external requests and works offline. */
+(function () {
+  var esc = function (s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  };
+
+  function inline(s) {
+    return esc(s)
+      .replace(/`([^`]+)`/g, function (_, c) { return "<code>" + c + "</code>"; })
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+  }
+
+  function slug(s) {
+    return s.toLowerCase().replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-");
+  }
+
+  function render(md) {
+    var lines = md.split("\n"), out = [], toc = [];
+    var i = 0, inCode = false, buf = [];
+
+    function flushList(tag) {
+      if (buf.length) { out.push("<" + tag + ">" + buf.join("") + "</" + tag + ">"); buf = []; }
+    }
+
+    while (i < lines.length) {
+      var ln = lines[i];
+
+      // fenced code
+      if (/^```/.test(ln)) {
+        var code = [];
+        i++;
+        while (i < lines.length && !/^```/.test(lines[i])) { code.push(lines[i]); i++; }
+        i++;
+        out.push("<pre><code>" + esc(code.join("\n")) + "</code></pre>");
+        continue;
+      }
+
+      // table
+      if (/^\|/.test(ln) && /^\|[\s:|-]+\|$/.test(lines[i + 1] || "")) {
+        var head = ln.split("|").slice(1, -1).map(function (c) { return "<th>" + inline(c.trim()) + "</th>"; });
+        i += 2;
+        var rows = [];
+        while (i < lines.length && /^\|/.test(lines[i])) {
+          rows.push("<tr>" + lines[i].split("|").slice(1, -1)
+            .map(function (c) { return "<td>" + inline(c.trim()) + "</td>"; }).join("") + "</tr>");
+          i++;
+        }
+        out.push("<table><thead><tr>" + head.join("") + "</tr></thead><tbody>" + rows.join("") + "</tbody></table>");
+        continue;
+      }
+
+      var h = /^(#{1,4})\s+(.*)$/.exec(ln);
+      if (h) {
+        var lvl = h[1].length, text = h[2], id = slug(text);
+        if (lvl === 2) toc.push({ id: id, text: text });
+        out.push("<h" + lvl + ' id="' + id + '">' + inline(text) + "</h" + lvl + ">");
+        i++; continue;
+      }
+
+      // Lists. A markdown item may be wrapped across several source lines, so
+      // absorb continuation lines into the current item rather than letting them
+      // fall through and become stray paragraphs.
+      var isItem = function (s) { return /^\s*[-*]\s+/.test(s); };
+      var isNum = function (s) { return /^\s*\d+\.\s+/.test(s); };
+      var breaksList = function (s) {
+        return !s.trim() || /^(#{1,4}\s|```|\||>)/.test(s);
+      };
+
+      if (isItem(ln) || isNum(ln)) {
+        var ordered = isNum(ln) && !isItem(ln);
+        var items = [], cur = null;
+        while (i < lines.length && !breaksList(lines[i])) {
+          if (isItem(lines[i]) || isNum(lines[i])) {
+            if (cur !== null) items.push(cur);
+            cur = lines[i].replace(/^\s*(?:[-*]|\d+\.)\s+/, "");
+          } else if (cur !== null) {
+            cur += " " + lines[i].trim();
+          } else break;
+          i++;
+        }
+        if (cur !== null) items.push(cur);
+        buf = items.map(function (t) { return "<li>" + inline(t) + "</li>"; });
+        flushList(ordered ? "ol" : "ul");
+        continue;
+      }
+
+      if (/^>\s?/.test(ln)) {
+        var q = [];
+        while (i < lines.length && /^>\s?/.test(lines[i])) { q.push(lines[i].replace(/^>\s?/, "")); i++; }
+        out.push("<blockquote>" + inline(q.join(" ")) + "</blockquote>");
+        continue;
+      }
+
+      if (!ln.trim()) { i++; continue; }
+
+      var para = [];
+      while (i < lines.length && lines[i].trim() && !/^(#{1,4}\s|```|\||[-*]\s|\d+\.\s|>)/.test(lines[i])) {
+        para.push(lines[i]); i++;
+      }
+      if (para.length) out.push("<p>" + inline(para.join(" ")) + "</p>");
+    }
+
+    return { html: out.join("\n"), toc: toc };
+  }
+
+  fetch("AGENTS.md")
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+    .then(function (md) {
+      // The page supplies its own title block, so drop the file's H1 and lead-in.
+      md = md.replace(/^#\s+.*\n/, "");
+      var res = render(md);
+      document.getElementById("doc").innerHTML = res.html;
+      if (res.toc.length) {
+        document.getElementById("tocList").innerHTML = res.toc.map(function (t) {
+          return '<li><a href="#' + t.id + '">' + t.text + "</a></li>";
+        }).join("");
+        document.getElementById("toc").hidden = false;
+      }
+    })
+    .catch(function () {
+      document.getElementById("doc").innerHTML =
+        '<p>Could not load AGENTS.md. Read it directly: <a href="AGENTS.md">AGENTS.md</a>.</p>';
+    });
+
+  // Match the playground's theme choice.
+  try {
+    var saved = JSON.parse(localStorage.getItem("hxr-theme"));
+    if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+    else if (matchMedia("(prefers-color-scheme: light)").matches)
+      document.documentElement.setAttribute("data-theme", "light");
+  } catch (e) {}
+})();
+</script>
+</body>
+</html>

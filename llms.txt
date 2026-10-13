@@ -1,0 +1,55 @@
+# haxe.run
+
+> A Haxe and hx+ playground that compiles and runs code entirely in the browser tab.
+> There is no build server: the compiler (hxc) is WebAssembly running on the page.
+> Everything the editor can do is also available programmatically through
+> `window.haxeRun`, so programs and AI agents are first-class consumers.
+
+## Start here
+
+- The API is `window.haxeRun`, available on https://haxe.run after the page loads.
+- Call `haxeRun.help()` for a printable summary, or `haxeRun.schema()` for a
+  machine-readable description of every method, option, and result shape.
+- Full reference: [AGENTS.md](/AGENTS.md)
+
+## Minimum useful example
+
+```js
+await haxeRun.ready();
+
+const r = await haxeRun.run({
+  files: { "Main.hx": 'class Main { static function main() { trace("hi"); } }' }
+});
+
+r.ok;      // true
+r.stdout;  // "Main.hx:1: hi"
+```
+
+## What to know before calling it
+
+- Every method returns a Promise. Await `haxeRun.ready()` once before the first
+  call; the compiler is ~8 MB compressed and takes a few seconds to boot.
+- `compile()` and `run()` are stateless. Pass `files`, get a result. They do not
+  read or disturb whatever a human has open in the editor.
+- Failures resolve, they do not reject. Check `ok`, then read `errors`, which are
+  structured objects with `file`, `line`, `column`, and `message`, so code can be
+  repaired without parsing prose.
+- `files` maps path to source: `{ "Main.hx": "...", "geom/Shape.hx": "..." }`.
+  Subdirectories are package paths.
+- The entry point is inferred (the module with `static function main`, preferring
+  `Main.hx`). Override with `main`.
+- Importing `openfl.*` automatically builds an OpenFL/Lime html5 app. These
+  compiles take appreciably longer than plain Haxe and render to a canvas rather
+  than printing to stdout.
+
+## The loop this is built for
+
+Generate Haxe, compile it, read structured diagnostics, repair, repeat. `run()`
+does the whole cycle in one call and hands back captured console output, so a
+model can verify its own code rather than guessing.
+
+## Language
+
+- hx+ is a strict superset of Haxe 4.3: valid Haxe is valid hx+.
+- The compiler is hxc, a faithful Haxe 4.3 compiler written in Haxe.
+- Details: https://hxplus.org
