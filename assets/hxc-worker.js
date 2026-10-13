@@ -17,9 +17,10 @@
  * not re-download or re-compile 21 MB. See WORKER_CONTRACT.md.
  */
 
-// Carry this worker's ?v= through, so a deploy never pairs a fresh worker
-// with a cached engine.
-importScripts("hxc.js", "openfl-boot.js", "hxc-core.js" + self.location.search);
+// Carry this worker's query (?v=<asset version>&b=<compiler build>) through, so
+// a deploy never pairs a fresh worker with a cached engine or compiler glue.
+importScripts("hxc.js" + self.location.search, "openfl-boot.js" + self.location.search,
+              "hxc-core.js" + self.location.search);
 
 var engine = null;
 

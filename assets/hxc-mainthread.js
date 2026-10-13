@@ -25,7 +25,7 @@
     scriptPromise = new Promise(function (resolve, reject) {
       if (global.createHxc) return resolve();
       var s = document.createElement("script");
-      s.src = "assets/hxc.js";
+      s.src = "assets/hxc.js?b=" + encodeURIComponent((global.HxcAssets && HxcAssets.build) || "");
       s.onload = function () { resolve(); };
       s.onerror = function () { reject(new Error("failed to load assets/hxc.js")); };
       document.head.appendChild(s);

@@ -21,7 +21,7 @@
   "use strict";
 
   var HXML = "build.hxml";
-  var VERSION = "1";
+  var VERSION = "2";
 
   // Packed into hxc.data already; asking for one makes the build an OpenFL app.
   var BUILTIN = { openfl: true, lime: true };

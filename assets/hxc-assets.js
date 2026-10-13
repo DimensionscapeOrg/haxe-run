@@ -19,7 +19,9 @@
 
   var WASM_URL = "assets/hxc.wasm";
   var DATA_URL = "assets/hxc.data";
-  // Unpacked sizes of the two files, for the progress bar. Hosts that gzip on
+  // Unpacked sizes of the two files, for the progress bar, and the build id
+  // that versions all three compiler files (wasm, data and the hxc.js glue, which
+  // holds the data's file offsets) so a cached one is never paired with a new one. Hosts that gzip on
   // the fly (GitHub Pages does) send the compressed size as Content-Length,
   // while a streamed read counts unpacked bytes. Regenerate this file whenever
   // the binaries change; if it is missing or stale the bar shows a byte count.
@@ -76,14 +78,16 @@
       .catch(function () { return {}; });
 
     cached = sizes.then(function (sz) {
+      var v = sz.build ? "?v=" + encodeURIComponent(sz.build) : "";
+      api.build = sz.build || "";
       return Promise.all([
-        fetchWithProgress(WASM_URL, sz["hxc.wasm"], function (l, t) {
+        fetchWithProgress(WASM_URL + v, sz["hxc.wasm"], function (l, t) {
           wasmLoaded = l; wasmTotal = t; report("downloading");
         }).then(function (buf) {
           report("compiling");
           return WebAssembly.compile(buf);
         }),
-        fetchWithProgress(DATA_URL, sz["hxc.data"], function (l, t) {
+        fetchWithProgress(DATA_URL + v, sz["hxc.data"], function (l, t) {
           dataLoaded = l; dataTotal = t; report("downloading");
         })
       ]);
@@ -98,5 +102,6 @@
     return cached;
   }
 
-  global.HxcAssets = { load: load };
+  var api = { load: load, build: "" };
+  global.HxcAssets = api;
 })(this);

@@ -178,6 +178,18 @@
 
   var FIELD_KINDS = { "var": "field", method: "function", type: "class", "package": "module" };
 
+  // Doc comments come back as written in the source: CRLF, and indented with it.
+  function cleanDoc(doc) {
+    var lines = unescapeXml(doc).replace(/\r/g, "").split("\n");
+    var indent = null;
+    lines.forEach(function (l) {
+      if (!l.trim()) return;
+      var n = /^[ \t]*/.exec(l)[0].length;
+      if (indent === null || n < indent) indent = n;
+    });
+    return lines.map(function (l) { return l.slice(indent || 0); }).join("\n").trim();
+  }
+
   function toplevelKind(k, type) {
     if (k === "local" || k === "global") return "variable";
     if (k === "member" || k === "static") return /->/.test(type) ? "function" : "field";
@@ -197,7 +209,7 @@
         if (seen[name]) continue;
         seen[name] = true;
         items.push({ label: name, kind: FIELD_KINDS[m[2]] || "field",
-                     detail: unescapeXml(m[3]), doc: unescapeXml(m[4]).trim() });
+                     detail: unescapeXml(m[3]), doc: cleanDoc(m[4]) });
       }
     } else if (text.indexOf("<il>") >= 0) {
       var tre = /<i k="([^"]*)"([^>]*)>([^<]*)<\/i>/g;
@@ -261,9 +273,12 @@
     this._out.length = 0;
     this._writeLibs(msg.libs);
     this._writeFiles(files, false);
+    var saved = typeof m.stackSave === "function" && typeof m.stackRestore === "function" ? m.stackSave() : null;
     try { m.callMain(args.slice()); } catch (err) {
+      if (saved !== null) m.stackRestore(saved);
       if (classify(err, "")) { this.poisoned = true; return empty; }
     }
+    if (saved !== null) m.stackRestore(saved);
     var text = this._out.map(function (l) { return l.text; }).join("\n");
     var res = { id: msg.id, timeMs: Date.now() - t0 };
 
@@ -463,6 +478,9 @@
     this._writeFiles(files, openfl);
 
     var spBefore = this.sp();
+    // Builds that export stackSave/stackRestore can give back whatever callMain
+    // leaves on the shadow stack, including after an abnormal unwind.
+    var saved = typeof m.stackSave === "function" && typeof m.stackRestore === "function" ? m.stackSave() : null;
     var exitCode = 0, threw = null;
     try {
       m.callMain(args.slice());
@@ -471,15 +489,18 @@
       threw = err;
     }
     var spAfter = this.sp();
+    if (saved !== null) m.stackRestore(saved);
 
     var rawText = this._out.map(function (l) { return l.text; }).join("\n");
     var failure = threw ? classify(threw, rawText) : null;
     var leaked = spBefore - spAfter;
 
     // A clean compile leaks only emscripten's argv allocation. Anything larger
-    // means callMain unwound abnormally and left the stack pointer buried;
-    // since the build has no stackRestore, this instance never gets it back.
-    if (failure || leaked > POISON_LEAK_BYTES) this.poisoned = true;
+    // means callMain unwound abnormally and left the stack pointer buried, which
+    // only a build without stackRestore can't undo. A compile that died on the
+    // native stack or trapped is retired either way: whatever state it was in
+    // the middle of changing is not trusted.
+    if (failure || (saved === null && leaked > POISON_LEAK_BYTES)) this.poisoned = true;
 
     var diags = parseDiags(this._out);
     var hadError = diags.some(function (d) { return d.severity === "error"; });

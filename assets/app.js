@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "15";
+  var ASSET_VERSION = "18";
 
   var worker = null;      // primary: the Worker, where compiles normally run
   var fallback = null;    // main-thread engine, built on demand (see retryOnFallback)
@@ -149,9 +149,14 @@
     }, BOOT_TIMEOUT_MS);
   }
 
+  // The build id keeps the hxc.js glue matched to the wasm and data it describes.
+  function workerUrl() {
+    return "assets/hxc-worker.js?v=" + ASSET_VERSION + "&b=" + encodeURIComponent(HxcAssets.build || "");
+  }
+
   function spawnWorker() {
     try {
-      worker = new Worker("assets/hxc-worker.js?v=" + ASSET_VERSION);
+      worker = new Worker(workerUrl());
     } catch (err) {
       return bootFailed("could not start the " + COMPILER_NAME);
     }
@@ -484,11 +489,12 @@
   }
 
   /* Completion, hover and signature help run on a Worker of their own, so a
-   * Run never waits behind keystrokes. It is also disposable on purpose: in
-   * this build a compiler instance slows down sharply after a handful of
-   * display requests (about 50 ms each at first, then several seconds), while
-   * compiles are unaffected. A fresh instance only costs an instantiate of the
-   * module already in hand, so this one is replaced every few requests.
+   * Run never waits behind keystrokes. It is also disposable: a fresh instance
+   * only costs an instantiate of the module already in hand. The compiler
+   * shipped here (the July 2026 build) slows down sharply after a handful of
+   * display requests, about 50 ms each at first and then several seconds, so the
+   * instance is replaced every few requests. Current hxc answers each in ~10 ms
+   * indefinitely: set DISPLAY_RECYCLE_AFTER to Infinity when it ships.
    *
    * Requests are coalesced per kind: while one is in flight, a newer request
    * of the same kind replaces the waiting one, which resolves empty. Fast
@@ -548,7 +554,7 @@
 
   function spawnDisplayWorker() {
     try {
-      display.worker = new Worker("assets/hxc-worker.js?v=" + ASSET_VERSION);
+      display.worker = new Worker(workerUrl());
     } catch (err) {
       display.dead = true;
       return;
@@ -1215,8 +1221,10 @@
       "<style>" + (STAGE_STYLES[mode] || STAGE_STYLES.console) + "</style><body>" +
       mount +
       "<script>" +
+      // Values print the way Haxe's Std.string would (see agent-api.js).
+      "var fmt=function(x,d){d=d||0;if(x===null||x===undefined||(typeof x!=='object'&&typeof x!=='function'))return String(x);if(d>4)return '...';try{if(Array.isArray(x))return '['+x.map(function(v){return fmt(v,d+1)}).join(',')+']';if(typeof x.toString==='function'&&x.toString!==Object.prototype.toString)return String(x);if(typeof x==='function')return '<function>';var k=Object.keys(x).filter(function(n){return typeof x[n]!=='function'});return k.length?'{ '+k.map(function(n){return n+' : '+fmt(x[n],d+1)}).join(', ')+' }':'{}'}catch(e){return String(x)}};" +
       "var send=function(k,a){parent.postMessage({__hxr:1,kind:k," +
-      "text:Array.prototype.map.call(a,String).join(' ')},'*')};" +
+      "text:Array.prototype.map.call(a,function(x){return fmt(x)}).join(' ')},'*')};" +
       "console.log=function(){send('log',arguments)};" +
       "console.info=console.log;" +
       "console.error=function(){send('error',arguments)};" +

@@ -180,9 +180,11 @@
         "<!doctype html><meta charset='utf-8'><style>html,body{margin:0;background:#0b0e14}" +
         "#openfl-content{width:100%;height:100%}</style><body><div id='openfl-content'></div><script>" +
         "var T=" + JSON.stringify(token) + ";" +
+        // Values print the way Haxe's Std.string would: [1,2], { a : 1 }, and enums
+        // through their own toString, as A(42).
+        "var fmt=function(x,d){d=d||0;if(x===null||x===undefined||(typeof x!=='object'&&typeof x!=='function'))return String(x);if(d>4)return '...';try{if(Array.isArray(x))return '['+x.map(function(v){return fmt(v,d+1)}).join(',')+']';if(typeof x.toString==='function'&&x.toString!==Object.prototype.toString)return String(x);if(typeof x==='function')return '<function>';var k=Object.keys(x).filter(function(n){return typeof x[n]!=='function'});return k.length?'{ '+k.map(function(n){return n+' : '+fmt(x[n],d+1)}).join(', ')+' }':'{}'}catch(e){return String(x)}};" +
         "var send=function(l,a){parent.postMessage({__hxrToken:T,level:l," +
-        "text:Array.prototype.map.call(a,function(x){try{return typeof x==='object'?JSON.stringify(x):String(x)}" +
-        "catch(e){return String(x)}}).join(' ')},'*')};" +
+        "text:Array.prototype.map.call(a,function(x){return fmt(x)}).join(' ')},'*')};" +
         "console.log=function(){send('log',arguments)};console.info=console.log;" +
         "console.warn=function(){send('warn',arguments)};" +
         "console.error=function(){send('error',arguments)};" +
