@@ -8,7 +8,7 @@
 <title>haxe.run | Haxe playground</title>
 <meta name="description" content="Compile and run Haxe in your browser with hxc. Live diagnostics, autocomplete, nothing to install.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/app.css?v=8">
+<link rel="stylesheet" href="assets/app.css?v=9">
 </head>
 <body>
 
@@ -80,6 +80,7 @@
 <section id="dashboard" class="dashboard">
   <div class="dash-inner">
     <header class="dash-head">
+      <p class="eyebrow"><span class="idx">haxe.run</span>Playground</p>
       <h1>Write Haxe. Run it here.</h1>
       <p>The compiler runs in this tab, so nothing is sent to a server and nothing to install.
          Pick a playground to start, or open an empty one.</p>
@@ -87,14 +88,14 @@
 
     <div class="dash-section">
       <div class="dash-section-head">
-        <h2>Examples</h2>
+        <h2 class="eyebrow"><span class="idx">01</span>Examples</h2>
       </div>
       <div class="card-grid" id="exampleCards"></div>
     </div>
 
     <div class="dash-section" id="savedSection" hidden>
       <div class="dash-section-head">
-        <h2>Saved in this browser</h2>
+        <h2 class="eyebrow"><span class="idx">02</span>Saved in this browser</h2>
         <span class="dash-hint">Stored locally. Clearing site data removes them.</span>
       </div>
       <div class="card-grid" id="savedCards"></div>
@@ -165,7 +166,7 @@
 <iframe id="sandbox" class="sandbox" sandbox="allow-scripts" title="output sandbox"></iframe>
 
 <div id="bootOverlay" class="boot-overlay">
-  <div class="boot-card">
+  <div class="boot-card ticks">
     <img class="boot-logo" src="assets/logo.svg" alt="">
     <div class="boot-title">Starting the hx+ compiler</div>
     <div class="boot-sub" id="bootSub">downloading&#8230;</div>
@@ -180,9 +181,9 @@
 <script src="assets/examples.js?v=6"></script>
 <script src="assets/openfl-boot.js?v=8"></script>
 <script src="assets/hxc-assets.js?v=10"></script>
-<script src="assets/hxc-core.js?v=10"></script>
-<script src="assets/hxc-mainthread.js?v=10"></script>
-<script src="assets/app.js?v=32"></script>
-<script src="assets/agent-api.js?v=2"></script>
+<script src="assets/hxc-core.js?v=11"></script>
+<script src="assets/hxc-mainthread.js?v=11"></script>
+<script src="assets/app.js?v=38"></script>
+<script src="assets/agent-api.js?v=4"></script>
 </body>
 </html>

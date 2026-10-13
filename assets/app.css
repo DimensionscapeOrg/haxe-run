@@ -1,37 +1,64 @@
-/* haxe.run playground. Shares the hx+ palette. */
+/* haxe.run playground. Same visual language as hxplus.org: the tokens below
+ * match hxplus-site/assets/style.css, the dashboard sits on the same blueprint
+ * grid, panels carry corner ticks, and labels are mono eyebrows. Orange is for
+ * actions and whatever is live; ink is for structure. The editor itself stays
+ * plain, because code reads better on a clean surface. */
 
 :root {
   --bg: #0b0e14;
-  --bg-alt: #10141d;
+  --bg-alt: #0f131c;
   --panel: #131826;
-  --border: rgba(255, 255, 255, 0.09);
+  --panel-2: #171d2c;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
   --text: #e7eaf0;
   --muted: #9aa3b2;
+  --faint: #6b7484;
   --accent: #ff9d2e;
+  --accent-2: #ffb054;
   --accent-soft: rgba(255, 157, 46, 0.12);
+  --accent-line: rgba(255, 157, 46, 0.45);
+  --ink: #ff9d2e;
+  --ink-soft: rgba(255, 157, 46, 0.12);
+  --ink-line: rgba(255, 157, 46, 0.45);
   --green: #5fd39a;
   --red: #ff6b6b;
   --yellow: #ffcc66;
   --blue: #6fb7ff;
-  --mono: "Cascadia Code", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  --grid: rgba(255, 255, 255, 0.045);
+  --tick: rgba(255, 255, 255, 0.22);
+  --shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  --mono: "Cascadia Code", "JetBrains Mono", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --bar-h: 52px;
   color-scheme: dark;
 }
 
 :root[data-theme="light"] {
+  /* Drafting paper: a white sheet ruled in faint blue, navy ink for structure. */
   --bg: #ffffff;
-  --bg-alt: #f4f6f9;
+  --bg-alt: #f3f6fb;
   --panel: #ffffff;
-  --border: rgba(20, 28, 45, 0.13);
-  --text: #1c2434;
-  --muted: #5d6675;
-  --accent: #d97a06;
-  --accent-soft: rgba(217, 122, 6, 0.1);
-  --green: #178c58;
+  --panel-2: #f8fafd;
+  --border: rgba(18, 42, 86, 0.13);
+  --border-strong: rgba(18, 42, 86, 0.22);
+  --text: #0e1a2e;
+  --muted: #475468;
+  --faint: #7d8aa0;
+  --accent: #e2620a;
+  --accent-2: #f07a1f;
+  --accent-soft: rgba(226, 98, 10, 0.09);
+  --accent-line: rgba(226, 98, 10, 0.45);
+  --ink: #1d46b0;
+  --ink-soft: rgba(29, 70, 176, 0.07);
+  --ink-line: rgba(29, 70, 176, 0.35);
+  --green: #0f8a55;
   --red: #c62828;
   --yellow: #a86800;
-  --blue: #1867c0;
+  --blue: #1d46b0;
+  --grid: rgba(29, 70, 176, 0.055);
+  --tick: rgba(29, 70, 176, 0.5);
+  --shadow: 0 18px 44px rgba(14, 26, 46, 0.12);
   color-scheme: light;
 }
 
@@ -49,6 +76,78 @@ body {
 }
 
 button, select { font-family: inherit; }
+
+::selection { background: var(--accent); color: #16100a; }
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Blueprint grid: fine dots in the dark theme, graph paper in the light one. */
+.dashboard,
+.boot-overlay {
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--grid) 1px, transparent 1.2px);
+  background-size: 28px 28px;
+}
+
+:root[data-theme="light"] .dashboard,
+:root[data-theme="light"] .boot-overlay {
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+}
+
+/* Corner ticks: registration marks at each corner of a panel, as on hxplus.org. */
+@property --t {
+  syntax: "<color>";
+  inherits: false;
+  initial-value: transparent;
+}
+
+.ticks::after {
+  --t: var(--tick);
+  --l: 10px;
+  content: "";
+  position: absolute;
+  inset: -1px;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    linear-gradient(var(--t) 0 0) 0 0 / var(--l) 1px,
+    linear-gradient(var(--t) 0 0) 0 0 / 1px var(--l),
+    linear-gradient(var(--t) 0 0) 100% 0 / var(--l) 1px,
+    linear-gradient(var(--t) 0 0) 100% 0 / 1px var(--l),
+    linear-gradient(var(--t) 0 0) 0 100% / var(--l) 1px,
+    linear-gradient(var(--t) 0 0) 0 100% / 1px var(--l),
+    linear-gradient(var(--t) 0 0) 100% 100% / var(--l) 1px,
+    linear-gradient(var(--t) 0 0) 100% 100% / 1px var(--l);
+  background-repeat: no-repeat;
+  transition: --t 0.2s;
+}
+
+.ticks:hover::after { --t: var(--ink); }
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.idx {
+  color: var(--faint);
+  letter-spacing: 0.04em;
+  padding-right: 12px;
+  border-right: 1px solid var(--border-strong);
+}
 
 /* ------------------------------------------------------------------- top bar */
 
@@ -144,7 +243,6 @@ button, select { font-family: inherit; }
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -154,12 +252,17 @@ button, select { font-family: inherit; }
 .boot-overlay.gone { opacity: 0; pointer-events: none; }
 
 .boot-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  max-width: 360px;
-  padding: 24px;
+  width: min(380px, calc(100vw - 32px));
+  padding: 34px 28px 28px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
 }
 
 .boot-logo { width: 52px; height: 52px; margin-bottom: 20px; animation: bob 2.4s ease-in-out infinite; }
@@ -167,7 +270,15 @@ button, select { font-family: inherit; }
 
 .boot-error .boot-logo { animation: none; opacity: .5; }
 
-.boot-title { font-size: 1.05rem; font-weight: 600; margin-bottom: 6px; }
+.boot-title {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink);
+  margin-bottom: 8px;
+}
 .boot-sub { color: var(--muted); font-size: .88rem; margin-bottom: 18px; }
 
 .boot-track {
@@ -214,7 +325,7 @@ button, select { font-family: inherit; }
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 14px;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+  box-shadow: var(--shadow);
   display: flex;
   flex-direction: column;
   gap: 11px;
@@ -246,7 +357,7 @@ button, select { font-family: inherit; }
 .opt-check code {
   font-family: var(--mono);
   font-size: .76rem;
-  color: var(--accent);
+  color: var(--ink);
 }
 
 .opt-defines {
@@ -314,7 +425,7 @@ button, select { font-family: inherit; }
 .file-tab.active {
   color: var(--text);
   background: var(--bg);
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--ink);
 }
 
 .entry-dot {
@@ -349,7 +460,7 @@ button, select { font-family: inherit; }
   cursor: pointer;
 }
 
-.file-add:hover { color: var(--accent); background: var(--accent-soft); }
+.file-add:hover { color: var(--ink); background: var(--ink-soft); }
 
 .file-bar .pane-meta { margin-left: auto; padding: 0 12px; align-self: center; }
 
@@ -357,8 +468,8 @@ button, select { font-family: inherit; }
   height: 34px;
   background: var(--panel);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
   padding: 0 10px;
   font-size: 0.85rem;
   cursor: pointer;
@@ -382,14 +493,14 @@ button, select { font-family: inherit; }
   white-space: nowrap;
   background: var(--panel);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
   padding: 0 14px;
   font-size: 0.86rem;
   font-weight: 600;
   line-height: 1;
   cursor: pointer;
-  transition: border-color .14s, background .14s, opacity .14s;
+  transition: border-color .14s, background .14s, opacity .14s, box-shadow .14s;
 }
 
 .btn:hover { border-color: var(--muted); }
@@ -398,10 +509,13 @@ button, select { font-family: inherit; }
   background: var(--accent);
   border-color: var(--accent);
   color: #16100a;
+  box-shadow: 0 8px 22px rgba(255, 157, 46, 0.22);
 }
 
-.btn-primary:hover { background: #ffb054; border-color: #ffb054; }
-.btn-primary:disabled { opacity: .4; cursor: default; background: var(--accent); }
+:root[data-theme="light"] .btn-primary { color: #fff; box-shadow: 0 8px 20px rgba(226, 98, 10, 0.2); }
+
+.btn-primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.btn-primary:disabled { opacity: .4; cursor: default; background: var(--accent); box-shadow: none; }
 
 /* Docs is a link, not an action: same geometry, quieter weight. */
 .btn-docs {
@@ -433,7 +547,7 @@ button, select { font-family: inherit; }
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, .45);
+  box-shadow: var(--shadow);
 }
 
 .popover-label {
@@ -478,7 +592,6 @@ button, select { font-family: inherit; }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  background: var(--bg);
 }
 
 body.in-editor .dashboard { display: none; }
@@ -500,10 +613,13 @@ body:not(.in-editor) #picker { display: none; }
 
 .dash-head { margin-bottom: 44px; }
 
+.dash-head .eyebrow { margin-bottom: 14px; }
+
 .dash-head h1 {
-  font-size: clamp(1.7rem, 3.4vw, 2.3rem);
-  letter-spacing: -.02em;
-  margin-bottom: 12px;
+  font-size: clamp(1.9rem, 3.8vw, 2.7rem);
+  letter-spacing: -.03em;
+  line-height: 1.1;
+  margin-bottom: 14px;
 }
 
 .dash-head p {
@@ -521,16 +637,9 @@ body:not(.in-editor) #picker { display: none; }
   margin-bottom: 16px;
 }
 
-.dash-section-head h2 {
-  font-size: .82rem;
-  font-family: var(--mono);
-  font-weight: 700;
-  letter-spacing: .14em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
+.dash-section-head h2 { font-size: 0.74rem; }
 
-.dash-hint { font-size: .78rem; color: var(--muted); opacity: .8; }
+.dash-hint { font-size: .78rem; color: var(--faint); }
 
 .card-grid {
   display: grid;
@@ -548,7 +657,7 @@ body:not(.in-editor) #picker { display: none; }
   min-height: 156px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 10px;
   cursor: pointer;
   font: inherit;
   color: inherit;
@@ -556,7 +665,7 @@ body:not(.in-editor) #picker { display: none; }
 }
 
 .card:hover {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
   transform: translateY(-2px);
 }
 
@@ -586,10 +695,10 @@ body:not(.in-editor) #picker { display: none; }
 .card-tag {
   font-family: var(--mono);
   font-size: .68rem;
-  color: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  padding: 2px 9px;
+  color: var(--ink);
+  background: var(--ink-soft);
+  border-radius: 5px;
+  padding: 2px 8px;
 }
 
 .card-del {
@@ -609,7 +718,8 @@ body:not(.in-editor) #picker { display: none; }
   align-items: flex-start;
   justify-content: center;
   border-style: dashed;
-  background: none;
+  border-color: var(--border-strong);
+  background: transparent;
 }
 
 .card-new .card-title { color: var(--accent); }
@@ -693,7 +803,7 @@ body:not(.in-editor) #picker { display: none; }
   cursor: col-resize;
 }
 
-.splitter:hover { background: var(--accent); }
+.splitter:hover { background: var(--ink); }
 
 /* ----------------------------------------------------------------- problems */
 
@@ -730,7 +840,7 @@ body:not(.in-editor) #picker { display: none; }
   border-bottom: 1px solid var(--border);
 }
 
-.problem:hover { background: var(--accent-soft); }
+.problem:hover { background: var(--ink-soft); }
 .problem-error .problem-sev { color: var(--red); }
 .problem-warning .problem-sev { color: var(--yellow); }
 .problem-sev { font-size: .74rem; }
@@ -755,7 +865,8 @@ body:not(.in-editor) #picker { display: none; }
   border-right: 1px solid var(--border);
   border-bottom: 2px solid transparent;
   color: var(--muted);
-  font-size: .78rem;
+  font-family: var(--mono);
+  font-size: .74rem;
   font-weight: 600;
   padding: 0 14px;
   cursor: pointer;
@@ -765,8 +876,8 @@ body:not(.in-editor) #picker { display: none; }
 .tab:hover { color: var(--text); }
 
 .tab.active {
-  color: var(--accent);
-  border-bottom-color: var(--accent);
+  color: var(--ink);
+  border-bottom-color: var(--ink);
   background: var(--bg);
 }
 
@@ -867,7 +978,7 @@ body:not(.in-editor) #picker { display: none; }
 }
 
 .preview-meta { margin-left: auto; }
-.preview-meta code { color: var(--accent); }
+.preview-meta code { color: var(--ink); }
 
 .preview-stage {
   flex: 1;

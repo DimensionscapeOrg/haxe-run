@@ -451,7 +451,7 @@
 
     var outputs = {};
     if (ok && tinfo.single) {
-      try { outputs[outName] = FS.readFile("/work/" + outName, { encoding: "utf8" }); } catch (e) {}
+      try { outputs[outName] = m.FS.readFile("/work/" + outName, { encoding: "utf8" }); } catch (e) {}
     }
 
     var log = this._out.map(function (l) {

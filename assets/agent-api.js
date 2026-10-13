@@ -240,6 +240,7 @@
     setFiles: function (files) {
       var f = normalizeFiles(files);
       need().loadProject(f, { id: null, name: "agent session", kind: "draft" });
+      need().showEditor();
       return f;
     },
 
@@ -254,7 +255,7 @@
     load: function (id) {
       var ex = (global.HXR_EXAMPLES || []).filter(function (e) { return e.id === id; })[0];
       if (!ex) throw new Error("no such sample: " + id + " (see haxeRun.editor.samples())");
-      need().loadProject(clone(ex.files), { id: ex.id, name: ex.name, kind: "example" });
+      need().openProject(clone(ex.files), { id: ex.id, name: ex.name, kind: "example" });
       return { id: ex.id, name: ex.name, files: Object.keys(ex.files) };
     },
 

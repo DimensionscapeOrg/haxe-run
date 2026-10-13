@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "10";
+  var ASSET_VERSION = "11";
 
   var worker = null;      // primary: the Worker, where compiles normally run
   var fallback = null;    // main-thread engine, built on demand (see retryOnFallback)
@@ -106,8 +106,10 @@
   var bootTimer = null;
   var retriedOnce = false;
   var warmedUp = false;
-  var WARMUP_SRC = "class Main { static function main() { var a = [for (i in 0...3) i]; " +
-                   "trace(a.map(function (x) return x * 2).join(',')); } }";
+  var warmupTries = 0;
+  var WARMUP_MAX_TRIES = 5;
+  var WARMUP_RETRY_MS = 800;   // optimization runs on background threads; give it time
+  var WARMUP_SRC = 'class Main { static function main() { trace("hi"); } }';
 
   /* Boot: fetch and compile the binaries once, then hand them to a Worker.
    * Owning the assets here (rather than letting each emscripten instance fetch
@@ -221,6 +223,14 @@
     var entry = state.pending[msg.id];
     if (!entry) return;
     clearTimeout(entry.timer);
+    // A warm-up compile is ours, not the user's: never freeze the page for it.
+    // The recycle notice that follows stands up a fresh Worker, whose ready
+    // handler tries the warm-up again.
+    if (entry.req.warmup) {
+      delete state.pending[msg.id];
+      entry.resolve({ id: msg.id, ok: false, warmupFailed: msg.retry });
+      return;
+    }
     // Reassign ownership synchronously: a recycle notice arrives immediately
     // after this one, and must not also re-send this request to the new Worker.
     entry.via = "fallback";
@@ -304,15 +314,29 @@
 
     var q = state.queue;
     state.queue = [];
-    // The first compile on a new page is several times slower than the ones
-    // after it while the browser optimizes the compiler. If nothing is waiting,
-    // spend that on a throwaway compile now rather than on the user's first Run.
-    if (!q.length && !warmedUp && !USE_STUB) {
-      warmedUp = true;
-      ask("compile", { files: { "Main.hx": WARMUP_SRC }, main: "Main", target: "js",
-                       options: DEFAULT_OPTIONS });
+    // Right after page load the compiler runs as unoptimized wasm, which is
+    // slower and uses much bigger stack frames: even a hello world can exhaust
+    // a Worker's stack on its first compile. Spend that on throwaway compiles
+    // rather than on the user's first Run. One that overflows is dropped
+    // quietly (see retryOnFallback) and tried again on the fresh Worker; every
+    // attempt pushes the browser toward optimizing the compiler, and optimized
+    // code is shared by every instance of the module.
+    if (!q.length && !warmedUp && warmupTries < WARMUP_MAX_TRIES && !USE_STUB) {
+      setTimeout(warmUp, warmupTries ? WARMUP_RETRY_MS : 0);
     }
     q.forEach(function (req) { dispatch(req); });
+  }
+
+  function warmUp() {
+    // Only on an idle compiler: the user's own work always goes first.
+    if (warmedUp || !state.ready || state.queue.length || Object.keys(state.pending).length) return;
+    warmupTries++;
+    ask("compile", { files: { "Main.hx": WARMUP_SRC }, main: "Main", target: "js",
+                     options: DEFAULT_OPTIONS, warmup: true })
+      .then(function (res) {
+        if (res && res.ok) warmedUp = true;
+        state.warmup = { tries: warmupTries, ok: warmedUp };   // for inspection
+      });
   }
 
   function bootFailed(message) {
@@ -1627,14 +1651,22 @@
     monaco.editor.defineTheme("hxplus-light", {
       base: "vs", inherit: true,
       rules: [
-        { token: "keyword", foreground: "b35f00" },
-        { token: "keyword.type", foreground: "1867c0" },
-        { token: "type.identifier", foreground: "1867c0" },
-        { token: "string", foreground: "0f7a4a" },
-        { token: "comment", foreground: "8a93a3" },
+        { token: "keyword", foreground: "b8500a" },
+        { token: "keyword.type", foreground: "1d46b0" },
+        { token: "type.identifier", foreground: "1d46b0" },
+        { token: "string", foreground: "0f8a55" },
+        { token: "string.quote", foreground: "0f8a55" },
+        { token: "comment", foreground: "7d8aa0" },
+        { token: "number", foreground: "1d46b0" },
         { token: "annotation", foreground: "7a3fb8" }
       ],
-      colors: { "editor.background": "#ffffff" }
+      colors: {
+        "editor.background": "#ffffff",
+        "editorGutter.background": "#ffffff",
+        "editorLineNumber.foreground": "#a3aec2",
+        "editorLineNumber.activeForeground": "#1d46b0",
+        "editor.lineHighlightBackground": "#f3f6fb"
+      }
     });
 
     state.editor = monaco.editor.create($("editor"), {
@@ -1897,7 +1929,7 @@
 
   function card(opts) {
     var el = document.createElement("button");
-    el.className = "card" + (opts.isNew ? " card-new" : "");
+    el.className = "card ticks" + (opts.isNew ? " card-new" : "");
     el.type = "button";
 
     if (!opts.isNew) {
@@ -2125,6 +2157,13 @@
     allFiles: allFiles,
     entryModule: entryModule,
     loadProject: loadProject,
+    openProject: openProject,
+    // Bring the editor up from the dashboard without compiling.
+    showEditor: function () {
+      document.body.classList.add("in-editor");
+      setView("code");
+      if (state.editor) state.editor.layout();
+    },
     switchFile: switchFile,
     addFile: addFile,
     renderFileTabs: renderFileTabs,
