@@ -121,6 +121,7 @@
     (msg.libs || []).forEach(function (bundle) {
       (bundle.libs || []).forEach(function (lib) {
         args.push("-cp", "/libs/" + lib.name, "-D", lib.name + "=" + lib.version);
+        if (lib.args) args = args.concat(lib.args);   // its extraParams.hxml
       });
     });
     if (opts.dce && opts.dce !== "std") args.push("-dce", opts.dce);
@@ -144,7 +145,8 @@
       var v = opts.defines[d];
       args.push("-D", v === true ? d : (d + "=" + v));
     });
-    return args;
+    // The project's build.hxml, already reduced to flags that apply here (libs.js).
+    return args.concat(msg.extraArgs || []);
   }
 
   /* ----------------------------------------------------------------- display
@@ -230,7 +232,7 @@
     var empty = emptyDisplay(msg);
     // OpenFL projects type the whole framework from source on every request,
     // which is far too slow to answer keystrokes.
-    if (typeof src !== "string" || usesOpenFL(files)) return empty;
+    if (typeof src !== "string" || msg.openfl || usesOpenFL(files)) return empty;
 
     var offset = Math.max(0, Math.min(src.length, msg.offset | 0));
     var at = offset, mode = "";
@@ -257,6 +259,7 @@
     ]);
     var m = this._mod;
     this._out.length = 0;
+    this._writeLibs(msg.libs);
     this._writeFiles(files, false);
     try { m.callMain(args.slice()); } catch (err) {
       if (classify(err, "")) { this.poisoned = true; return empty; }
@@ -415,18 +418,29 @@
   // compiles, unlike /work.
   Engine.prototype._writeLibs = function (bundles) {
     var FS = this._mod.FS, done = this._libs || (this._libs = {});
+    function clear(dir) {
+      FS.readdir(dir).forEach(function (n) {
+        if (n === "." || n === "..") return;
+        var p = dir + "/" + n;
+        if (FS.isDir(FS.stat(p).mode)) { clear(p); FS.rmdir(p); } else FS.unlink(p);
+      });
+    }
     (bundles || []).forEach(function (bundle) {
       (bundle.libs || []).forEach(function (lib) {
-        var key = lib.name + "@" + lib.version;
-        if (done[key]) return;
+        // OpenFL and Lime come with hxc.data and are never replaced.
+        if (lib.name === "openfl" || lib.name === "lime") return;
+        var key = lib.key || (lib.name + "@" + lib.version);
+        if (done[lib.name] === key) return;
         var root = "/libs/" + lib.name;
+        // Another source or version of the same library: start from an empty folder.
+        if (done[lib.name]) { try { clear(root); } catch (e) {} }
         Object.keys(lib.files).forEach(function (rel) {
           var full = root + "/" + rel;
           var parts = full.slice(0, full.lastIndexOf("/")).split("/").filter(Boolean), cur = "";
           parts.forEach(function (p) { cur += "/" + p; try { FS.mkdir(cur); } catch (e) {} });
           FS.writeFile(full, lib.files[rel]);
         });
-        done[key] = true;
+        done[lib.name] = key;
       });
     });
   };
@@ -440,7 +454,7 @@
     // An OpenFL project has no static main: it is a document class instantiated
     // by ApplicationMain, which lime tooling normally generates. Inject that
     // bootstrap and compile it instead of the user's module.
-    var openfl = usesOpenFL(files);
+    var openfl = !!msg.openfl || usesOpenFL(files);
     var args = buildArgs(msg, openfl);
 
     var m = this._mod;

@@ -131,10 +131,45 @@ The entry point is inferred as the module declaring `static function main`,
 preferring `Main.hx`. Pass `main` (a dotted type path, e.g. `"pkg.Main"`) to
 override.
 
+## Libraries
+
+Put a `build.hxml` file in `files`. It is read the way any hxml file is, for the
+flags that apply here:
+
+| line | meaning |
+|---|---|
+| `-lib name` | a library haxe.run serves: `openfl`, `lime`, `feathersui`, `actuate` |
+| `-lib name:git:https://github.com/owner/repo#ref` | any haxelib on GitHub, at a tag, branch or commit |
+| `-D`, `--macro`, `-cp`, `-main`, `-dce`, `--no-inline`, `--no-opt`, `-debug` | as on the command line |
+
+```js
+await haxeRun.run({
+  files: {
+    "Main.hx": "import hxmath.math.Vector2; class Main { static function main() trace(new Vector2(3, 4).length); }",
+    "build.hxml": "-lib hxmath:git:https://github.com/tbrosman/hxmath#0.16.0"
+  }
+});
+```
+
+- GitHub sources come through jsDelivr, because lib.haxe.org can't be read from
+  a page. That is also why `-lib name` without a source only works for the
+  libraries listed above.
+- A library's `haxelib.json` gives its class path and dependencies, and its
+  `extraParams.hxml` is applied, as haxelib would. Dependencies resolve the same
+  way: by name against the served libraries, or from their own git source.
+- Libraries are fetched once per page and cached. A first fetch from GitHub
+  takes a few seconds.
+- Problems (an unknown library, an unreachable repository, a flag that doesn't
+  apply) come back as diagnostics with `file: "build.hxml"` and the line.
+- Target and output flags (`-js`, `-cpp`, `--interp`, ...) are ignored:
+  JavaScript is the only target here. A repository's git submodules aren't
+  served, so anything a library needs from one will be missing.
+
 ## OpenFL
 
-Importing anything from `openfl.*` switches the build to an OpenFL/Lime html5
-application automatically; the `ApplicationMain` bootstrap is injected for you.
+Importing anything from `openfl.*`, or `-lib openfl` in `build.hxml`, switches
+the build to an OpenFL/Lime html5 application automatically; the
+`ApplicationMain` bootstrap is injected for you.
 Two consequences worth planning for:
 
 - An OpenFL project has no `static function main`. It is a `Sprite` subclass, and
@@ -142,10 +177,9 @@ Two consequences worth planning for:
 - These compiles are much slower than plain Haxe, because the whole framework is
   typed from source. Raise `timeoutMs` accordingly.
 
-Importing anything from `feathers.*` does the same and also loads
-[Feathers UI](https://feathersui.com/) (with its dependency Actuate). The
-library is fetched the first time a project needs it, about 0.6 MB, and these
-builds take longer again, around 25 seconds, so allow `timeoutMs` for it.
+`-lib feathersui`, or importing anything from `feathers.*`, does the same and
+also loads [Feathers UI](https://feathersui.com/) and its dependency Actuate.
+These builds take longer again, around 25 seconds, so allow `timeoutMs` for it.
 
 OpenFL renders to a canvas, so `run()` will usually return only whatever the
 program `trace`s, not a picture. To see it rendered, drive the visible editor
@@ -226,7 +260,7 @@ Nothing fetched is executed until Run is pressed.
 
 ## Discovery
 
-- `/llms.txt` — short machine-readable summary of this site
-- `/AGENTS.md` — this document
-- `haxeRun.schema()` — the same reference as structured data, at runtime
+- `/llms.txt`: a short machine-readable summary of this site
+- `/AGENTS.md`: this document
+- `haxeRun.schema()`: the same reference as structured data, at runtime
 - `<meta name="ai-api">` in the page head points here

@@ -1,20 +1,21 @@
-"""Pack haxelib sources the playground loads on demand.
+"""Pack haxelib sources the playground serves itself.
 
     python tools/pack-libs.py
 
-Writes assets/libs/feathersui.json: Feathers UI plus its runtime dependency
-Actuate (hxargs is only used by Feathers UI's command-line tool), taken from
-whatever versions `haxelib libpath` reports. The page fetches the bundle the
-first time a project uses feathers.*, and each compiler instance writes it
-under /libs/<name> once. OpenFL and Lime are not here: they are already packed
-into hxc.data.
+Writes one assets/libs/<name>.json per library, taken from whatever version
+`haxelib libpath` reports, plus assets/libs/index.json listing them. A project
+gets one with `-lib <name>` in its build.hxml (or, for Feathers UI, just by
+importing feathers.*); dependencies named in haxelib.json are pulled in the same
+way. Each compiler instance writes a library under /libs/<name> once. OpenFL and
+Lime are not here: they are already packed into hxc.data.
 
-Each library's license file is included and written next to its sources.
+Each library's license file is included and written next to its sources, and
+its extraParams.hxml, if any, is applied wherever it is used.
 
 Workaround, remove once the playground's compiler is rebuilt with the fix: hxc's
 macro encoder writes an empty `default:` as no default at all, so a switch in a
 class that goes through a build macro (every Feathers UI control does) loses
-it and fails with "Unmatched patterns". The bundled copy spells those defaults
+it and fails with "Unmatched patterns". The packed copies spell those defaults
 `default: {}`, which means the same thing and survives the round trip.
 """
 
@@ -24,10 +25,10 @@ import re
 import subprocess
 import sys
 
-EMPTY_DEFAULT = re.compile(r"default:(\s*\n\s*\})")
-
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BUNDLES = {"feathersui": ["feathersui", "actuate"]}
+LIBS = ["feathersui", "actuate"]
+
+EMPTY_DEFAULT = re.compile(r"default:(\s*\n\s*\})")
 
 
 def libpath(name):
@@ -36,8 +37,8 @@ def libpath(name):
 
 
 def pack(name):
-    meta = json.load(open(os.path.join(libpath(name), "haxelib.json"), encoding="utf-8"))
     base = libpath(name)
+    meta = json.load(open(os.path.join(base, "haxelib.json"), encoding="utf-8"))
     src = os.path.join(base, meta.get("classPath", ""))
     files = {}
     for dirpath, _, names in os.walk(src):
@@ -51,18 +52,32 @@ def pack(name):
         if os.path.exists(p):
             files[lic] = open(p, encoding="utf-8").read()
             break
-    return {"name": name, "version": meta["version"], "license": meta.get("license", ""), "files": files}
+    extra = os.path.join(base, "extraParams.hxml")
+    return {
+        "name": name,
+        "version": meta["version"],
+        "license": meta.get("license", ""),
+        "dependencies": meta.get("dependencies", {}),
+        "extraParams": open(extra, encoding="utf-8").read() if os.path.exists(extra) else "",
+        "files": files,
+    }
 
 
 def main():
-    os.makedirs(os.path.join(ROOT, "assets", "libs"), exist_ok=True)
-    for bundle, names in BUNDLES.items():
-        libs = [pack(n) for n in names]
-        out = os.path.join(ROOT, "assets", "libs", bundle + ".json")
+    out_dir = os.path.join(ROOT, "assets", "libs")
+    os.makedirs(out_dir, exist_ok=True)
+    index = {}
+    for name in LIBS:
+        lib = pack(name)
+        out = os.path.join(out_dir, name + ".json")
         with open(out, "w", encoding="utf-8", newline="\n") as f:
-            json.dump({"libs": libs}, f, separators=(",", ":"))
-        summary = ", ".join("%s %s (%d files)" % (l["name"], l["version"], len(l["files"])) for l in libs)
-        print("%s: %s, %d bytes" % (os.path.relpath(out, ROOT), summary, os.path.getsize(out)))
+            json.dump({"libs": [lib]}, f, separators=(",", ":"))
+        index[name] = {"version": lib["version"], "license": lib["license"]}
+        print("%s: %s %s, %d files, %d bytes" % (os.path.relpath(out, ROOT), name, lib["version"],
+                                                len(lib["files"]), os.path.getsize(out)))
+    with open(os.path.join(out_dir, "index.json"), "w", encoding="utf-8", newline="\n") as f:
+        json.dump(index, f, indent=2)
+        f.write("\n")
 
 
 if __name__ == "__main__":

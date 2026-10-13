@@ -75,7 +75,7 @@
         throw new TypeError('files["' + n + '"] is ' + typeof files[n] + ", not source text; " + shape);
       }
       var path = String(n).replace(/^\/+/, "");
-      if (!/\.hx$/i.test(path)) path += ".hx";
+      if (!/\.hx(ml)?$/i.test(path)) path += ".hx";   // build.hxml carries libraries and flags
       out[path] = files[n];
     });
     return out;

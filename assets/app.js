@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "14";
+  var ASSET_VERSION = "15";
 
   var worker = null;      // primary: the Worker, where compiles normally run
   var fallback = null;    // main-thread engine, built on demand (see retryOnFallback)
@@ -240,7 +240,7 @@
     // after this one, and must not also re-send this request to the new Worker.
     entry.via = "fallback";
 
-    if (HxcCore.usesOpenFL(entry.req.files || {})) heavyOnMainThread = true;
+    if (entry.req.openfl || HxcCore.usesOpenFL(entry.req.files || {})) heavyOnMainThread = true;
     noteMainThread();
     // Keep the last few so a failure can be inspected after the fact.
     window.HXR_FAILURES = (window.HXR_FAILURES || []).slice(-4);
@@ -393,52 +393,76 @@
     target.postMessage(wire);
   }
 
-  /* Libraries the compiler doesn't carry in hxc.data are fetched the first time
-   * a project needs them and sent along with its compiles; each compiler
-   * instance writes them into its filesystem once. See tools/pack-libs.py. */
-  var LIBS = [
-    { bundle: "feathersui", test: /(^|[^\w.])feathers\./ }
-  ];
-  var libCache = {};
-  var LIB_TIMEOUT_MS = 180000;   // these type a whole UI framework from source
+  /* A project's libraries and flags come from its build.hxml, and Feathers UI
+   * from an import alone (libs.js). They are resolved here, fetched once, and
+   * sent along with each request; each compiler instance writes a library into
+   * its filesystem once. */
+  var LIB_TIMEOUT_MS = 180000;   // OpenFL-sized builds type a whole framework from source
 
-  function loadLib(name) {
-    if (!libCache[name]) {
-      libCache[name] = fetch("assets/libs/" + name + ".json?v=" + ASSET_VERSION)
-        .then(function (r) {
-          if (!r.ok) throw new Error(name + ": HTTP " + r.status);
-          return r.json();
-        })
-        .catch(function (err) { delete libCache[name]; throw err; });
+  var HXML_TEMPLATE = [
+    "# Libraries and flags for this playground, as in any hxml file.",
+    "# Read here: -lib, -D, --macro, -cp, -main, -dce, --no-inline, --no-opt, -debug.",
+    "#",
+    "# A library haxe.run serves itself (see the Docs page for the list):",
+    "#   -lib feathersui",
+    "# Any haxelib on GitHub, pinned to a tag, branch or commit:",
+    "#   -lib tink_core:git:https://github.com/haxetink/tink_core#2.1.1",
+    "",
+    ""
+  ].join("\n");
+
+  // A module path from a file path, minus whichever -cp folder holds it.
+  function stripClassPath(main, args) {
+    for (var i = 0; i + 1 < args.length; i++) {
+      if (args[i] !== "-cp") continue;
+      var prefix = args[i + 1].replace(/\//g, ".") + ".";
+      if (main.indexOf(prefix) === 0) return main.slice(prefix.length);
     }
-    return libCache[name];
+    return main;
   }
 
-  function libsFor(files) {
-    var src = Object.keys(files || {}).map(function (n) { return files[n]; }).join("\n");
-    return LIBS.filter(function (l) { return l.test.test(src); }).map(function (l) { return l.bundle; });
-  }
-
-  function withLibs(payload, bundles) {
-    var p = {};
-    for (var k in payload) p[k] = payload[k];
-    p.libs = bundles;
-    if (bundles.length) p.timeoutMs = LIB_TIMEOUT_MS;
-    return p;
+  // The payload plus what its build.hxml asks for. Never rejects: problems come
+  // back as diagnostics against build.hxml, merged into the result by ask().
+  function withProject(payload) {
+    var fetching = false;
+    function restore() { if (fetching && state.ready) setCompilerStatus("ready", COMPILER_NAME + " ready"); }
+    return HxrLibs.resolve(payload.files, function (name) {
+      fetching = true;
+      setCompilerStatus("booting", "loading " + name);
+    }).then(function (r) {
+      restore();
+      var p = {};
+      for (var k in payload) p[k] = payload[k];
+      p.libs = r.bundles;
+      p.extraArgs = r.args;
+      p.openfl = r.openfl;
+      if (r.main) p.main = r.main;
+      else if (p.main) p.main = stripClassPath(p.main, r.args);
+      if (r.bundles.length || r.openfl) p.timeoutMs = LIB_TIMEOUT_MS;
+      p.projectDiagnostics = r.diagnostics;
+      return p;
+    }, function (err) {
+      restore();
+      var p = {};
+      for (var k in payload) p[k] = payload[k];
+      p.libs = [];
+      p.projectDiagnostics = [{ severity: "error", file: HxrLibs.HXML, line: 1, column: 1, endLine: 1, endColumn: 2,
+                                message: "could not read the project's libraries: " + (err && err.message || err), code: "hxml" }];
+      return p;
+    });
   }
 
   function ask(kind, payload) {
-    var needed = kind === "compile" && !payload.libs ? libsFor(payload.files) : [];
-    if (needed.length) {
-      var restore = function () { if (state.ready) setCompilerStatus("ready", COMPILER_NAME + " ready"); };
-      setCompilerStatus("booting", "loading " + needed.join(", "));
-      return Promise.all(needed.map(loadLib)).then(function (bundles) {
-        restore();
-        return ask(kind, withLibs(payload, bundles));
-      }, function (err) {
-        restore();
-        toast("Could not load " + needed.join(", ") + ": " + (err && err.message || err));
-        return ask(kind, withLibs(payload, []));
+    if (kind === "compile" && !payload.libs) {
+      return withProject(payload).then(function (p) {
+        return ask(kind, p).then(function (res) {
+          var extra = p.projectDiagnostics || [];
+          if (res && extra.length) {
+            res.diagnostics = extra.concat(res.diagnostics || []);
+            if (extra.some(function (d) { return d.severity === "error"; })) { res.ok = false; res.runnable = false; }
+          }
+          return res;
+        });
       });
     }
     return new Promise(function (resolve) {
@@ -447,7 +471,7 @@
       for (var k in payload) req[k] = payload[k];
       req._resolve = resolve;
 
-      if (kind === "compile" && heavyOnMainThread && !req.warmup && HxcCore.usesOpenFL(req.files || {})) {
+      if (kind === "compile" && heavyOnMainThread && !req.warmup && (req.openfl || HxcCore.usesOpenFL(req.files || {}))) {
         noteMainThread();
         // Let the notice and the "compiling" state paint before the page blocks.
         ensureFallback().then(function () { setTimeout(function () { dispatch(req, "fallback"); }, 60); },
@@ -487,12 +511,16 @@
 
   function askDisplay(kind, payload) {
     if (USE_STUB) return ask(kind, payload);
-    return new Promise(function (resolve) {
-      if (!DISPLAY_ENABLED || display.dead || !assets) return resolve(emptyDisplay(kind));
-      var prev = display.waiting[kind];
-      if (prev) prev.resolve(emptyDisplay(kind));
-      display.waiting[kind] = { kind: kind, payload: payload, resolve: resolve };
-      pumpDisplay();
+    if (!DISPLAY_ENABLED || display.dead || !assets) return Promise.resolve(emptyDisplay(kind));
+    // Completion needs the project's libraries too; they are cached after the first fetch.
+    return withProject(payload).then(function (p) {
+      if (p.openfl) return emptyDisplay(kind);   // see _display in hxc-core.js
+      return new Promise(function (resolve) {
+        var prev = display.waiting[kind];
+        if (prev) prev.resolve(emptyDisplay(kind));
+        display.waiting[kind] = { kind: kind, payload: p, resolve: resolve };
+        pumpDisplay();
+      });
     });
   }
 
@@ -671,7 +699,7 @@
   }
 
   function entryModule() {
-    var names = fileNames();
+    var names = fileNames().filter(function (n) { return /\.hx$/i.test(n); });
     var hit = names.filter(function (n) {
       return /\bstatic\s+function\s+main\s*\(/.test(sourceOf(n));
     });
@@ -684,7 +712,7 @@
     state.files[name] = source || "";
     if (state.monaco) {
       state.models[name] = state.monaco.editor.createModel(
-        state.files[name], "haxe", state.monaco.Uri.parse("file:///" + name)
+        state.files[name], /\.hxml$/i.test(name) ? "hxml" : "haxe", state.monaco.Uri.parse("file:///" + name)
       );
       state.models[name].onDidChangeContent(onEdit);
     }
@@ -720,7 +748,7 @@
 
   function normalizeName(name) {
     name = String(name).trim().replace(/^\/+/, "");
-    if (!/\.hx$/i.test(name)) name += ".hx";
+    if (!/\.hx(ml)?$/i.test(name)) name += ".hx";
     return name.replace(/[^\w./-]/g, "");
   }
 
@@ -1161,7 +1189,7 @@
 
     // Heuristic: does the code look like a display-list app?
     var src = fileNames().map(sourceOf).join("\n");
-    if (/\bimport\s+(openfl|lime|flash|feathers)\./.test(src) ||
+    if (/\bimport\s+(openfl|lime|flash|feathers)\./.test(src) || HxrLibs.declaresOpenFL(allFiles()) ||
         /\bextends\s+(Sprite|Application|DisplayObject|Bitmap)\b/.test(src) ||
         /\baddChild\s*\(/.test(src)) {
       return "app";
@@ -1683,6 +1711,15 @@
     state.monaco = monaco;
     monaco.languages.register({ id: "haxe", extensions: [".hx"] });
     monaco.languages.setMonarchTokensProvider("haxe", HAXE_TOKENS);
+    monaco.languages.register({ id: "hxml", extensions: [".hxml"] });
+    monaco.languages.setMonarchTokensProvider("hxml", {
+      tokenizer: { root: [
+        [/#.*$/, "comment"],
+        [/^\s*-{1,2}[\w-]+/, "keyword"],
+        [/https?:\/\/\S+/, "string"]
+      ] }
+    });
+    monaco.languages.setLanguageConfiguration("hxml", { comments: { lineComment: "#" } });
     monaco.languages.setLanguageConfiguration("haxe", {
       comments: { lineComment: "//", blockComment: ["/*", "*/"] },
       brackets: [["{", "}"], ["[", "]"], ["(", ")"]],
@@ -1979,6 +2016,7 @@
         if (!name) return;
         name = normalizeName(name);
         if (state.files[name] !== undefined) { switchFile(name); renderFileTabs(); return; }
+        if (/\.hxml$/i.test(name)) { addFile(name, HXML_TEMPLATE); renderFileTabs(); return; }
         var cls = name.replace(/\.hx$/, "").split("/").pop();
         var pkg = name.indexOf("/") > -1
           ? "package " + name.replace(/\/[^/]+$/, "").replace(/\//g, ".") + ";\n\n" : "";
@@ -2204,6 +2242,11 @@
       state.options = clone(DEFAULT_OPTIONS);
       writeOptions(); store(LS.options, state.options);
       state.dirty = true; maybeAutoCompile();
+    };
+    $("optHxml").onclick = function () {
+      toggleOptions(false);
+      if (!addFile(HxrLibs.HXML, HXML_TEMPLATE)) switchFile(HxrLibs.HXML);
+      renderFileTabs();
     };
 
     initTheme();

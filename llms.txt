@@ -38,6 +38,9 @@ r.stdout;  // "Main.hx:1: hi"
   Subdirectories are package paths.
 - The entry point is inferred (the module with `static function main`, preferring
   `Main.hx`). Override with `main`.
+- Libraries come from a `build.hxml` entry in `files`: `-lib feathersui` for one
+  haxe.run serves, or `-lib name:git:https://github.com/owner/repo#tag` for any
+  haxelib on GitHub. See the Libraries section of AGENTS.md.
 - Importing `openfl.*` automatically builds an OpenFL/Lime html5 app. These
   compiles take appreciably longer than plain Haxe and render to a canvas rather
   than printing to stdout.

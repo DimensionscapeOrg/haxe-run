@@ -99,10 +99,15 @@ Notes:
     nullSafety: false,       // bool
     defines: { my_flag: true, level: "3" }   // name -> true | string
   },
-  libs: [ { libs: [ { name, version, files: { "pkg/Type.hx": "..." } } ] } ]
-                             // optional: on-demand libraries (assets/libs/*.json),
-                             // written under /libs/<name> once per instance and
-                             // added as -cp /libs/<name> -D <name>=<version>
+  libs: [ { libs: [ { name, version, key, args, files: { "pkg/Type.hx": "..." } } ] } ]
+                             // optional: the project's libraries, resolved by
+                             // assets/libs.js from build.hxml (or a feathers import).
+                             // Written under /libs/<name> once per instance (again
+                             // when `key` changes), added as -cp /libs/<name>
+                             // -D <name>=<version>, then `args` (its extraParams.hxml)
+  extraArgs: ["-D", "x", ...],  // optional: the rest of build.hxml, already filtered
+  openfl: true               // optional: build as an OpenFL app even without an
+                             // openfl.* import (-lib openfl / feathersui)
 }
 ```
 

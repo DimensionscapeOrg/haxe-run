@@ -79,6 +79,35 @@ class Area {
   },
 
   {
+    id: "github-lib",
+    name: "A library from GitHub",
+    description: "build.hxml pulls hxmath straight from its GitHub repository, pinned to a tag.",
+    tags: ["Haxe", "build.hxml"],
+    accent: "green",
+    files: {
+      "Main.hx": `import hxmath.math.Vector2;
+
+class Main {
+    static function main() {
+        var a = new Vector2(3, 4);
+        var b = new Vector2(1, -2);
+
+        trace('a = $a, length \${a.length}');
+        trace('a + b = \${Vector2.add(a, b)}');
+        trace('a . b = \${Vector2.dot(a, b)}');
+        trace('a turned left = \${a.rotatedLeft}');
+        trace('halfway from a to b = \${Vector2.lerp(a, b, 0.5)}');
+    }
+}
+`,
+      "build.hxml": `# Libraries and flags for this playground, as in any hxml file.
+# Any haxelib on GitHub works, pinned to a tag, branch or commit:
+-lib hxmath:git:https://github.com/tbrosman/hxmath#0.16.0
+`
+    }
+  },
+
+  {
     id: "shapes",
     name: "Drawing shapes",
     description: "OpenFL vector graphics: fills, curves, and generated polygons.",

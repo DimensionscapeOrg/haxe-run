@@ -8,7 +8,7 @@
 <title>haxe.run | Haxe playground</title>
 <meta name="description" content="Compile and run Haxe in your browser with hxc. Live diagnostics, autocomplete, nothing to install.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/app.css?v=9">
+<link rel="stylesheet" href="assets/app.css?v=10">
 </head>
 <body>
 
@@ -58,6 +58,10 @@
       <div class="opt-row opt-col">
         <label for="optDefines">Defines, one per line</label>
         <textarea id="optDefines" class="opt-defines" spellcheck="false" placeholder="my_flag&#10;level=3"></textarea>
+      </div>
+      <div class="opt-row">
+        <span class="opt-libs">Libraries come from a <code>build.hxml</code> file</span>
+        <button id="optHxml" class="btn btn-tiny">Add build.hxml</button>
       </div>
       <div class="opt-foot">
         <span id="optSummary" class="opt-summary"></span>
@@ -178,12 +182,13 @@
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-<script src="assets/examples.js?v=8"></script>
+<script src="assets/examples.js?v=9"></script>
 <script src="assets/openfl-boot.js?v=8"></script>
 <script src="assets/hxc-assets.js?v=10"></script>
-<script src="assets/hxc-core.js?v=13"></script>
-<script src="assets/hxc-mainthread.js?v=13"></script>
-<script src="assets/app.js?v=42"></script>
-<script src="assets/agent-api.js?v=4"></script>
+<script src="assets/hxc-core.js?v=14"></script>
+<script src="assets/hxc-mainthread.js?v=14"></script>
+<script src="assets/libs.js?v=2"></script>
+<script src="assets/app.js?v=44"></script>
+<script src="assets/agent-api.js?v=6"></script>
 </body>
 </html>
