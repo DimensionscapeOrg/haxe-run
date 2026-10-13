@@ -98,7 +98,11 @@ Notes:
     noOpt: false,            // bool  (--no-opt)
     nullSafety: false,       // bool
     defines: { my_flag: true, level: "3" }   // name -> true | string
-  }
+  },
+  libs: [ { libs: [ { name, version, files: { "pkg/Type.hx": "..." } } ] } ]
+                             // optional: on-demand libraries (assets/libs/*.json),
+                             // written under /libs/<name> once per instance and
+                             // added as -cp /libs/<name> -D <name>=<version>
 }
 ```
 

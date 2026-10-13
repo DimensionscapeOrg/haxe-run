@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "11";
+  var ASSET_VERSION = "13";
 
   var worker = null;      // primary: the Worker, where compiles normally run
   var fallback = null;    // main-thread engine, built on demand (see retryOnFallback)
@@ -374,7 +374,7 @@
           req._resolve({ id: req.id, ok: false, error: "timed out",
                          diagnostics: [], outputs: {} });
         }
-      }, REQUEST_TIMEOUT_MS)
+      }, req.timeoutMs || REQUEST_TIMEOUT_MS)
     };
     // req carries a _resolve callback that structured-clone cannot serialize;
     // post a clean copy so the message actually reaches the worker.
@@ -383,7 +383,54 @@
     target.postMessage(wire);
   }
 
+  /* Libraries the compiler doesn't carry in hxc.data are fetched the first time
+   * a project needs them and sent along with its compiles; each compiler
+   * instance writes them into its filesystem once. See tools/pack-libs.py. */
+  var LIBS = [
+    { bundle: "feathersui", test: /(^|[^\w.])feathers\./ }
+  ];
+  var libCache = {};
+  var LIB_TIMEOUT_MS = 180000;   // these type a whole UI framework from source
+
+  function loadLib(name) {
+    if (!libCache[name]) {
+      libCache[name] = fetch("assets/libs/" + name + ".json?v=" + ASSET_VERSION)
+        .then(function (r) {
+          if (!r.ok) throw new Error(name + ": HTTP " + r.status);
+          return r.json();
+        })
+        .catch(function (err) { delete libCache[name]; throw err; });
+    }
+    return libCache[name];
+  }
+
+  function libsFor(files) {
+    var src = Object.keys(files || {}).map(function (n) { return files[n]; }).join("\n");
+    return LIBS.filter(function (l) { return l.test.test(src); }).map(function (l) { return l.bundle; });
+  }
+
+  function withLibs(payload, bundles) {
+    var p = {};
+    for (var k in payload) p[k] = payload[k];
+    p.libs = bundles;
+    if (bundles.length) p.timeoutMs = LIB_TIMEOUT_MS;
+    return p;
+  }
+
   function ask(kind, payload) {
+    var needed = kind === "compile" && !payload.libs ? libsFor(payload.files) : [];
+    if (needed.length) {
+      var restore = function () { if (state.ready) setCompilerStatus("ready", COMPILER_NAME + " ready"); };
+      setCompilerStatus("booting", "loading " + needed.join(", "));
+      return Promise.all(needed.map(loadLib)).then(function (bundles) {
+        restore();
+        return ask(kind, withLibs(payload, bundles));
+      }, function (err) {
+        restore();
+        toast("Could not load " + needed.join(", ") + ": " + (err && err.message || err));
+        return ask(kind, withLibs(payload, []));
+      });
+    }
     return new Promise(function (resolve) {
       var id = ++state.seq;
       var req = { id: id, kind: kind };
@@ -866,7 +913,7 @@
   function isHeavy() {
     if (state.manual) return true;
     var src = fileNames().map(sourceOf).join("\n");
-    return /\bimport\s+(openfl|lime|flash)\./.test(src) || hostMode() === "app";
+    return /\bimport\s+(openfl|lime|flash|feathers)\./.test(src) || hostMode() === "app";
   }
 
   function setEditorStatus(kind, text) {
@@ -1097,7 +1144,7 @@
 
     // Heuristic: does the code look like a display-list app?
     var src = fileNames().map(sourceOf).join("\n");
-    if (/\bimport\s+(openfl|lime|flash)\./.test(src) ||
+    if (/\bimport\s+(openfl|lime|flash|feathers)\./.test(src) ||
         /\bextends\s+(Sprite|Application|DisplayObject|Bitmap)\b/.test(src) ||
         /\baddChild\s*\(/.test(src)) {
       return "app";

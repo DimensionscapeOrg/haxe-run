@@ -72,9 +72,11 @@
     return diags;
   }
 
+  // Feathers UI is built on OpenFL, and an app written against it may never
+  // name openfl itself (it extends feathers.controls.Application).
   function usesOpenFL(files) {
     return Object.keys(files).some(function (n) {
-      return /(^|[^\w.])openfl\./.test(files[n]);
+      return /(^|[^\w.])(openfl|feathers)\./.test(files[n]);
     });
   }
 
@@ -114,6 +116,13 @@
     var args = ["-main", entry, tinfo.flag, "out." + tinfo.ext,
                 "-D", "message.reporting=classic", "-D", "message.no-color"];
     if (openfl) args = args.concat(openflArgs());
+    // Libraries the page loaded on demand (assets/libs/*.json), written under
+    // /libs/<name> by _writeLibs; the same class path and define -lib would add.
+    (msg.libs || []).forEach(function (bundle) {
+      (bundle.libs || []).forEach(function (lib) {
+        args.push("-cp", "/libs/" + lib.name, "-D", lib.name + "=" + lib.version);
+      });
+    });
     if (opts.dce && opts.dce !== "std") args.push("-dce", opts.dce);
     if (opts.debug)    args.push("-debug");
     if (opts.noInline) args.push("--no-inline");
@@ -397,6 +406,26 @@
     }
   };
 
+  // On-demand libraries are written once per instance: /libs survives between
+  // compiles, unlike /work.
+  Engine.prototype._writeLibs = function (bundles) {
+    var FS = this._mod.FS, done = this._libs || (this._libs = {});
+    (bundles || []).forEach(function (bundle) {
+      (bundle.libs || []).forEach(function (lib) {
+        var key = lib.name + "@" + lib.version;
+        if (done[key]) return;
+        var root = "/libs/" + lib.name;
+        Object.keys(lib.files).forEach(function (rel) {
+          var full = root + "/" + rel;
+          var parts = full.slice(0, full.lastIndexOf("/")).split("/").filter(Boolean), cur = "";
+          parts.forEach(function (p) { cur += "/" + p; try { FS.mkdir(cur); } catch (e) {} });
+          FS.writeFile(full, lib.files[rel]);
+        });
+        done[key] = true;
+      });
+    });
+  };
+
   Engine.prototype._compile = function (msg) {
     var t0 = Date.now();
     var files = msg.files || {};
@@ -411,6 +440,7 @@
 
     var m = this._mod;
     this._out.length = 0;
+    this._writeLibs(msg.libs);
     this._writeFiles(files, openfl);
 
     var spBefore = this.sp();

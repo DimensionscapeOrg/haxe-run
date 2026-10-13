@@ -142,6 +142,11 @@ Two consequences worth planning for:
 - These compiles are much slower than plain Haxe, because the whole framework is
   typed from source. Raise `timeoutMs` accordingly.
 
+Importing anything from `feathers.*` does the same and also loads
+[Feathers UI](https://feathersui.com/) (with its dependency Actuate). The
+library is fetched the first time a project needs it, about 0.6 MB, and these
+builds take longer again, around 25 seconds, so allow `timeoutMs` for it.
+
 OpenFL renders to a canvas, so `run()` will usually return only whatever the
 program `trace`s, not a picture. To see it rendered, drive the visible editor
 instead (below).

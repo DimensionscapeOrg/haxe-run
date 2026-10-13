@@ -180,6 +180,96 @@ class Main extends Sprite {
   },
 
   {
+    id: "feathersui",
+    name: "Feathers UI components",
+    description: "Buttons, text input, a slider, toggles and a list, styled by Feathers UI's default theme.",
+    tags: ["Feathers UI", "OpenFL"],
+    accent: "blue",
+    files: {
+      "Main.hx": `import feathers.controls.Application;
+import feathers.controls.Button;
+import feathers.controls.Check;
+import feathers.controls.HSlider;
+import feathers.controls.Label;
+import feathers.controls.LayoutGroup;
+import feathers.controls.ListView;
+import feathers.controls.TextInput;
+import feathers.controls.ToggleSwitch;
+import feathers.data.ArrayCollection;
+import feathers.events.TriggerEvent;
+import feathers.layout.HorizontalLayout;
+import feathers.layout.VerticalLayout;
+import feathers.skins.RectangleSkin;
+import openfl.events.Event;
+
+class Main extends Application {
+    public function new() {
+        super();
+
+        // The default theme draws dark text, so give the app a light page.
+        backgroundSkin = new RectangleSkin(SolidColor(0xF4F5F7));
+
+        var layout = new VerticalLayout();
+        layout.gap = 14;
+        layout.setPadding(24);
+        this.layout = layout;
+
+        var title = new Label("Feathers UI on haxe.run");
+        title.variant = Label.VARIANT_HEADING;
+        addChild(title);
+
+        // A text input and a button that reads it.
+        var name = new TextInput("", "Your name");
+        var greeting = new Label("Type a name and press the button.");
+        var hello = new Button("Say hello", (_:TriggerEvent) -> {
+            var who = name.text.length > 0 ? name.text : "world";
+            greeting.text = 'Hello, $who!';
+        });
+        addChild(row([name, hello]));
+        addChild(greeting);
+
+        // A slider, a check that enables it, and a label that follows it.
+        var amount = new Label("Value: 40");
+        var slider = new HSlider(40, 0, 100);
+        slider.addEventListener(Event.CHANGE, _ -> amount.text = 'Value: \${Math.round(slider.value)}');
+        var enabled = new Check("Slider enabled", true);
+        enabled.addEventListener(Event.CHANGE, _ -> slider.enabled = enabled.selected);
+        addChild(row([enabled, slider, amount]));
+
+        // A toggle switch.
+        var status = new Label("Notifications off");
+        var toggle = new ToggleSwitch();
+        toggle.addEventListener(Event.CHANGE, _ -> {
+            status.text = toggle.selected ? "Notifications on" : "Notifications off";
+        });
+        addChild(row([toggle, status]));
+
+        // A list backed by a collection; selecting an item updates the label.
+        var picked = new Label("Pick a language");
+        var list = new ListView(new ArrayCollection([
+            { text: "Haxe" }, { text: "hx+" }, { text: "OpenFL" }, { text: "Lime" }, { text: "Feathers UI" }
+        ]));
+        list.itemToText = item -> item.text;
+        list.height = 180;
+        list.addEventListener(Event.CHANGE, _ -> picked.text = 'Picked: \${list.selectedItem.text}');
+        addChild(row([list, picked]));
+    }
+
+    static function row(items:Array<openfl.display.DisplayObject>):LayoutGroup {
+        var group = new LayoutGroup();
+        var layout = new HorizontalLayout();
+        layout.gap = 12;
+        layout.verticalAlign = MIDDLE;
+        group.layout = layout;
+        for (item in items) group.addChild(item);
+        return group;
+    }
+}
+`
+    }
+  },
+
+  {
     id: "diagnostics",
     name: "Diagnostics",
     description: "Deliberately broken code, to see how errors are reported inline.",
