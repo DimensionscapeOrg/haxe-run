@@ -42,7 +42,7 @@ function emit(data) {
   }
   self.postMessage(data);
   if (data && data.poisoned) {
-    self.postMessage({ recycle: true, reason: "leak" });
+    self.postMessage({ recycle: true, reason: data.poisonReason || "leak" });
   }
 }
 

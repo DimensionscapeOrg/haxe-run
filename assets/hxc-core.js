@@ -49,6 +49,11 @@
   // ~1 KB argv allocation and nothing else).
   var POISON_LEAK_BYTES = 65536;
 
+  // A wasm instance's memory only grows, up to 2 GB, and current hxc keeps a
+  // lot between compiles: an OpenFL build adds 500-700 MB. Past this much the
+  // instance answers and is then replaced, before a compile can run out.
+  var HEAP_RECYCLE_BYTES = 1024 * 1024 * 1024;
+
   function parseDiags(lines) {
     var diags = [];
     lines.forEach(function (ln) {
@@ -501,6 +506,12 @@
     // native stack or trapped is retired either way: whatever state it was in
     // the middle of changing is not trusted.
     if (failure || (saved === null && leaked > POISON_LEAK_BYTES)) this.poisoned = true;
+    var heapBytes = m.HEAP8 ? m.HEAP8.length : 0;
+    var outOfMemory = /Memory Exhausted/i.test(rawText);
+    if (outOfMemory || heapBytes > HEAP_RECYCLE_BYTES) {
+      this.poisoned = true;
+      this.poisonReason = "memory";
+    }
 
     var diags = parseDiags(this._out);
     var hadError = diags.some(function (d) { return d.severity === "error"; });
@@ -539,6 +550,9 @@
       stats: { modules: names.length, types: typeCount, fieldsRemoved: 0, phases: {} },
       failure: failure,
       poisoned: this.poisoned,
+      poisonReason: this.poisonReason || null,
+      outOfMemory: outOfMemory,
+      heapBytes: heapBytes,
       threwMessage: threw ? String(threw && (threw.message || threw)) : null,
       threwName: threw && threw.name,
       stackHead: (threw && threw.stack) ? String(threw.stack).split("\n").slice(0, 15).join("\n") : null,

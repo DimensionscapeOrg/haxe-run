@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "18";
+  var ASSET_VERSION = "20";
 
   var worker = null;      // primary: the Worker, where compiles normally run
   var fallback = null;    // main-thread engine, built on demand (see retryOnFallback)
@@ -461,6 +461,14 @@
     if (kind === "compile" && !payload.libs) {
       return withProject(payload).then(function (p) {
         return ask(kind, p).then(function (res) {
+          // The instance that ran out is being replaced right now; one retry
+          // lands on the fresh one (recycleWorker re-queues it).
+          if (res && res.outOfMemory && !p.memoryRetry) {
+            p.memoryRetry = true;
+            return ask(kind, p);
+          }
+          return res;
+        }).then(function (res) {
           var extra = p.projectDiagnostics || [];
           if (res && extra.length) {
             res.diagnostics = extra.concat(res.diagnostics || []);
