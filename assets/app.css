@@ -644,6 +644,8 @@ body:not(.in-editor) #picker { display: none; }
 
 .dash-hint { font-size: .78rem; color: var(--faint); }
 
+.dash-note-detail { color: var(--muted); font-family: var(--mono); font-size: .74rem; }
+
 .dash-note {
   margin-top: 18px;
   max-width: 48em;

@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "23";
+  var ASSET_VERSION = "24";
 
   /* Light mode, for phones and tablets, very low-memory devices, and any tab
    * that died here before. Mobile browsers kill a tab that uses too much memory
@@ -107,14 +107,19 @@
    * completion worker. A crash is noticed by a marker in sessionStorage that is
    * set while the compiler starts or compiles and cleared when it answers; if a
    * page load finds it still set, the last attempt died. */
-  var BUSY_KEY = "hxr-busy", CRASHES_KEY = "hxr-crashes";
+  var BUSY_KEY = "hxr-busy", CRASHES_KEY = "hxr-crashes", STAGE_KEY = "hxr-crash-stage";
+  // The marker holds what was happening, so a crash can be reported by stage.
+  var crashStage = "";
   var crashes = (function () {
     try {
       var n = +(sessionStorage.getItem(CRASHES_KEY) || 0);
-      if (sessionStorage.getItem(BUSY_KEY)) {
+      var busy = sessionStorage.getItem(BUSY_KEY);
+      if (busy) {
         sessionStorage.removeItem(BUSY_KEY);
         sessionStorage.setItem(CRASHES_KEY, String(++n));
+        sessionStorage.setItem(STAGE_KEY, busy);
       }
+      crashStage = sessionStorage.getItem(STAGE_KEY) || "";
       return n;
     } catch (e) { return 0; }
   })();
@@ -123,9 +128,9 @@
      Math.min(screen.width, screen.height) < 900) ||
     (!!navigator.deviceMemory && navigator.deviceMemory <= 2);
 
-  function markBusy(on) {
+  function markBusy(on, stage) {
     try {
-      if (on) sessionStorage.setItem(BUSY_KEY, "1");
+      if (on) sessionStorage.setItem(BUSY_KEY, stage || "working");
       else sessionStorage.removeItem(BUSY_KEY);
     } catch (e) {}
   }
@@ -164,7 +169,7 @@
     }
 
     armBootTimer();
-    markBusy(true);
+    markBusy(true, "downloading the compiler");
     HxcAssets.load(showBootProgress).then(function (a) {
       assets = a;
       spawnWorker();
@@ -411,7 +416,10 @@
     via = via || "worker";
     var target = via === "fallback" ? fallback : worker;
     if (!target) { state.queue.push(req); return; }   // recycling; flushes on ready
-    if (req.kind === "compile") markBusy(true);
+    if (req.kind === "compile") {
+      markBusy(true, (req.openfl || HxcCore.usesOpenFL(req.files || {}) ? "compiling an OpenFL project" :
+                     "compiling a Haxe project") + (req.warmup ? " (warm-up)" : ""));
+    }
 
     state.pending[req.id] = {
       req: req,
@@ -666,6 +674,8 @@
   }
 
   function showBootProgress(msg) {
+    if (msg.phase === "compiling") markBusy(true, "compiling the compiler's WebAssembly");
+    else if (msg.phase === "instantiating") markBusy(true, "starting the compiler");
     var sub = $("bootSub"), bar = $("bootBar"), hint = $("bootHint");
     if (msg.note) sub.textContent = msg.note;
     else if (msg.phase) sub.textContent = msg.phase + "…";
@@ -2230,6 +2240,34 @@
     var note = $("lightNote");
     if (note) { note.textContent = text; note.hidden = false; }
     toast(text, 9000);   // for anyone who lands straight in a playground from a link
+    // What it was doing and on what, so a crash on someone's phone can be reported.
+    deviceSummary().then(function (dev) {
+      if (!note) return;
+      var d = document.createElement("small");
+      d.className = "dash-note-detail";
+      d.textContent = "Last stage: " + (crashStage || "unknown") + ". Device: " + dev + ".";
+      note.appendChild(document.createElement("br"));
+      note.appendChild(d);
+    });
+  }
+
+  function deviceSummary() {
+    var bits = [];
+    if (navigator.deviceMemory) bits.push("about " + navigator.deviceMemory + " GB memory");
+    var uad = navigator.userAgentData;
+    var more = uad && uad.getHighEntropyValues
+      ? uad.getHighEntropyValues(["bitness", "architecture", "platformVersion", "fullVersionList"])
+          .then(function (h) {
+            if (h.bitness) bits.push(h.bitness + "-bit browser");
+            if (h.architecture) bits.push(h.architecture);
+            var b = (h.fullVersionList || []).filter(function (x) { return !/Not.?A.?Brand/i.test(x.brand); })[0];
+            if (b) bits.push(b.brand + " " + b.version);
+          }).catch(function () {})
+      : Promise.resolve();
+    return more.then(function () {
+      if (!uad) bits.push(navigator.userAgent.replace(/^Mozilla\/5\.0 /, ""));
+      return bits.join(", ") || "unknown";
+    });
   }
 
   function finishBoot() {
