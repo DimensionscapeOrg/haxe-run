@@ -46,6 +46,7 @@
       var t0 = Date.now();
       (function poll() {
         var i = global.__hxrInternal;
+        if (i && i.ensureCompiler) i.ensureCompiler();   // light mode starts it on demand
         if (i && i.state && i.state.ready) {
           internal = i;
           return resolve({

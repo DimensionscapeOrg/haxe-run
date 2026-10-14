@@ -21,10 +21,11 @@
   "use strict";
 
   var HXML = "build.hxml";
-  var VERSION = "4";
+  var VERSION = "6";
 
-  // Packed into hxc.data already; asking for one makes the build an OpenFL app.
-  var BUILTIN = { openfl: true, lime: true };
+  // Dependencies a library has but doesn't declare in haxelib.json: OpenFL
+  // names Lime in its include.xml, which only Lime's tools read.
+  var IMPLIED = { openfl: ["lime"] };
   // Dependencies with nothing to compile for this target.
   var NOT_NEEDED = { hxargs: true, hxcpp: true, "hxcpp-debug-server": true };
   // Libraries whose presence means an OpenFL app, for callers that need to know
@@ -283,9 +284,14 @@
       s.line = l.line; s.text = l.text;
       return s;
     });
-    // Feathers UI is used often enough to work from an import alone.
-    if (!requests.some(function (r) { return r.name === "feathersui"; }) && /(^|[^\w.])feathers\./.test(sourcesOf(files))) {
+    // OpenFL, Lime and Feathers UI are used often enough to work from an import
+    // alone. Feathers UI brings OpenFL, and OpenFL brings Lime.
+    var named = function (n) { return requests.some(function (r) { return r.name === n; }); };
+    var src = sourcesOf(files);
+    if (!named("feathersui") && /(^|[^\w.])feathers\./.test(src)) {
       requests.push({ name: "feathersui", implicit: true });
+    } else if (!named("openfl") && !named("lime") && /(^|[^\w.])(openfl|lime)\./.test(src)) {
+      requests.push({ name: "openfl", implicit: true });
     }
     if (!requests.length) return Promise.resolve(result);
 
@@ -298,7 +304,6 @@
         }
         if (seen[req.name]) return Promise.resolve();
         seen[req.name] = true;
-        if (BUILTIN[req.name]) { result.openfl = true; return Promise.resolve(); }
         if (NOT_NEEDED[req.name]) return Promise.resolve();
 
         var where = from ? " (needed by " + from.name + ")" : "";
@@ -319,7 +324,6 @@
         }
         if (onProgress) onProgress(req.name);
         return p.then(function (lib) {
-          libs.push(lib);
           if (lib.submodules) {
             result.diagnostics.push(diag("warning", line, text, lib.source + " uses git submodules, which " +
               "can't be fetched here; anything " + lib.name + " needs from them will be missing"));
@@ -331,12 +335,16 @@
             lib.args = x.args;
           }
           var parent = { name: lib.name, line: line, text: text };
-          return Promise.all(Object.keys(lib.dependencies || {}).map(function (dep) {
+          var deps = Object.keys(lib.dependencies || {}).map(function (dep) {
             var v = String(lib.dependencies[dep] || "");
-            var spec = parseLibSpec(dep.toLowerCase() + (/^git:/.test(v) ? ":" + v : ""));
+            return parseLibSpec(dep.toLowerCase() + (/^git:/.test(v) ? ":" + v : ""));
+          }).concat((IMPLIED[lib.name] || []).map(function (n) { return { name: n }; }));
+          // Dependencies go first, as haxelib orders them: their class paths and
+          // init macros come before the library that needs them.
+          return deps.reduce(function (chain, spec) {
             spec.line = line; spec.text = text;
-            return one(spec, parent);
-          }));
+            return chain.then(function () { return one(spec, parent); });
+          }, Promise.resolve()).then(function () { libs.push(lib); });
         }, function (err) {
           result.diagnostics.push(diag("error", line, text, "could not load " + req.name + where + ": " + err.message));
         });

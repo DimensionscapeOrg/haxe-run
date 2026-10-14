@@ -28,7 +28,7 @@ r.stdout;  // "Main.hx:1: hi"
 ## What to know before calling it
 
 - Every method returns a Promise. Await `haxeRun.ready()` once before the first
-  call; the compiler is ~8 MB compressed and takes a few seconds to boot.
+  call; the compiler is ~9 MB compressed and takes a few seconds to boot.
 - `compile()` and `run()` are stateless. Pass `files`, get a result. They do not
   read or disturb whatever a human has open in the editor.
 - Failures resolve, they do not reject. Check `ok`, then read `errors`, which are

@@ -98,7 +98,37 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "21";
+  var ASSET_VERSION = "23";
+
+  /* Light mode, for phones and tablets, very low-memory devices, and any tab
+   * that died here before. Mobile browsers kill a tab that uses too much memory
+   * without an error, so in light mode the compiler starts only when a
+   * playground opens, and runs as one instance: no warm-up compile and no
+   * completion worker. A crash is noticed by a marker in sessionStorage that is
+   * set while the compiler starts or compiles and cleared when it answers; if a
+   * page load finds it still set, the last attempt died. */
+  var BUSY_KEY = "hxr-busy", CRASHES_KEY = "hxr-crashes";
+  var crashes = (function () {
+    try {
+      var n = +(sessionStorage.getItem(CRASHES_KEY) || 0);
+      if (sessionStorage.getItem(BUSY_KEY)) {
+        sessionStorage.removeItem(BUSY_KEY);
+        sessionStorage.setItem(CRASHES_KEY, String(++n));
+      }
+      return n;
+    } catch (e) { return 0; }
+  })();
+  var LIGHT = /[?&]light\b/.test(location.search) || crashes > 0 ||
+    (!!window.matchMedia && matchMedia("(pointer: coarse)").matches &&
+     Math.min(screen.width, screen.height) < 900) ||
+    (!!navigator.deviceMemory && navigator.deviceMemory <= 2);
+
+  function markBusy(on) {
+    try {
+      if (on) sessionStorage.setItem(BUSY_KEY, "1");
+      else sessionStorage.removeItem(BUSY_KEY);
+    } catch (e) {}
+  }
 
   var worker = null;      // primary: the Worker, where compiles normally run
   var fallback = null;    // main-thread engine, built on demand (see retryOnFallback)
@@ -134,6 +164,7 @@
     }
 
     armBootTimer();
+    markBusy(true);
     HxcAssets.load(showBootProgress).then(function (a) {
       assets = a;
       spawnWorker();
@@ -223,6 +254,7 @@
     if (!entry) return;
     clearTimeout(entry.timer);
     delete state.pending[msg.id];
+    if (!Object.keys(state.pending).length) markBusy(false);
     entry.resolve(msg);
   }
 
@@ -329,6 +361,7 @@
 
     var q = state.queue;
     state.queue = [];
+    if (!q.length) markBusy(false);   // started fine; a compile sets it again
     // Right after page load the compiler runs as unoptimized wasm, which is
     // slower and uses much bigger stack frames: even a hello world can exhaust
     // a Worker's stack on its first compile. Spend that on throwaway compiles
@@ -336,7 +369,7 @@
     // quietly (see retryOnFallback) and tried again on the fresh Worker; every
     // attempt pushes the browser toward optimizing the compiler, and optimized
     // code is shared by every instance of the module.
-    if (!q.length && !warmedUp && warmupTries < WARMUP_MAX_TRIES && !USE_STUB) {
+    if (!q.length && !warmedUp && warmupTries < WARMUP_MAX_TRIES && !USE_STUB && !LIGHT) {
       setTimeout(warmUp, warmupTries ? WARMUP_RETRY_MS : 0);
     }
     q.forEach(function (req) { dispatch(req); });
@@ -378,6 +411,7 @@
     via = via || "worker";
     var target = via === "fallback" ? fallback : worker;
     if (!target) { state.queue.push(req); return; }   // recycling; flushes on ready
+    if (req.kind === "compile") markBusy(true);
 
     state.pending[req.id] = {
       req: req,
@@ -491,6 +525,7 @@
                               function () { if (state.ready) dispatch(req); else state.queue.push(req); });
         return;
       }
+      ensureCompiler();
       if (state.ready) dispatch(req);
       else state.queue.push(req);   // flushed on ready
     });
@@ -510,8 +545,7 @@
   var DISPLAY_TIMEOUT_MS = 8000;
   var DISPLAY_ORDER = ["complete", "signature", "hover"];
   // Each instance holds its own ~270 MB heap; skip the second one on phones.
-  var DISPLAY_ENABLED = !USE_STUB &&
-    !(window.matchMedia && matchMedia("(pointer: coarse)").matches && innerWidth < 820);
+  var DISPLAY_ENABLED = !USE_STUB && !LIGHT;
 
   var display = { worker: null, ready: false, served: 0, busy: null, waiting: {}, dead: false };
 
@@ -685,9 +719,19 @@
   // created and doesn't depend on what the main thread is doing. The real
   // asymmetry is that Workers simply get about half the main thread's budget,
   // which is what the fallback path above exists to handle.)
-  function startCompilerDeferred() { setTimeout(startCompiler, 0); }
-  if (document.readyState === "complete") startCompilerDeferred();
-  else window.addEventListener("load", startCompilerDeferred);
+  // In light mode it waits until something needs it: a playground opening, a
+  // request, or haxeRun.ready().
+  var compilerStarted = false;
+  function ensureCompiler() {
+    if (compilerStarted) return;
+    compilerStarted = true;
+    startCompiler();
+  }
+  function startCompilerDeferred() { setTimeout(ensureCompiler, 0); }
+  if (!LIGHT) {
+    if (document.readyState === "complete") startCompilerDeferred();
+    else window.addEventListener("load", startCompilerDeferred);
+  }
 
   /* ----------------------------------------------------------- file storage */
 
@@ -2162,6 +2206,7 @@
   }
 
   function openProject(files, meta) {
+    ensureCompiler();
     document.body.classList.add("in-editor");
     loadProject(files, meta);
     if (meta && meta.id) $("picker").value = (meta.kind === "saved" ? "saved:" : "example:") + meta.id;
@@ -2173,7 +2218,22 @@
     maybeAutoCompile();
   }
 
+  // Said once, on the dashboard and as a toast, after a crash here.
+  function noteLightMode() {
+    if (!crashes) return;
+    var text = crashes > 1
+      ? "This device has run out of memory compiling here more than once. haxe.run is in its " +
+        "lightest mode now, but large projects (OpenFL, Feathers UI) may still be too big for it. " +
+        "A desktop browser works best."
+      : "The last visit ran out of memory, so haxe.run is in light mode: the compiler starts when " +
+        "you open a playground, and completion is off.";
+    var note = $("lightNote");
+    if (note) { note.textContent = text; note.hidden = false; }
+    toast(text, 9000);   // for anyone who lands straight in a playground from a link
+  }
+
   function finishBoot() {
+    noteLightMode();
     state.target = recall(LS.target, state.target);
     if (!TARGETS.some(function (t) { return t.id === state.target; })) state.target = "js";
 
@@ -2274,6 +2334,8 @@
   // change; window.haxeRun is the stable contract. See AGENTS.md.
   window.__hxrInternal = {
     ask: ask,                    // direct compiler request, bypasses the UI
+    ensureCompiler: ensureCompiler,
+    light: LIGHT,
     state: state,
     allFiles: allFiles,
     entryModule: entryModule,

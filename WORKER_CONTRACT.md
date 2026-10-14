@@ -282,16 +282,48 @@ letting the engine raise `RangeError`.
 
 ## Rebuilding the compiler
 
-After replacing `assets/hxc.wasm` / `assets/hxc.data`, regenerate
-`assets/hxc.json` with their unpacked sizes. GitHub Pages gzips both on the fly
-and reports the compressed size, so the boot progress bar takes its totals from
-that file. If it is stale the bar falls back to a byte count.
+The live build is hxc-release `705ca52a`, built like this:
+
+1. `git archive HEAD src` from hxc-release into a scratch folder, so nothing
+   uncommitted gets in.
+2. Generate the C++:
+   ```
+   haxe -cp src -main hxc.Compiler -cpp out -D emscripten -D HXCPP_GC_BIG_BLOCKS
+        -D HXC_WASM_PRELOAD_STD -D HXC_WASM_STD_DIR=C:/HaxeToolkit/haxe/std
+        -D no-compilation
+   ```
+   No `HXC_WASM_PRELOAD_LIBS`: hxc.data carries only the standard library, and
+   OpenFL and Lime are served from `assets/libs/` like any other library.
+3. In `out/Build.xml`, under `<linker id="exe" if="emscripten">`:
+   - `-sINITIAL_MEMORY=100663296` (96 MB) instead of 268435456, so a phone
+     doesn't commit 256 MB up front. The 64 MB shadow stack still fits; the
+     heap grows when a build needs it.
+   - add `stackSave,stackRestore` to `-sEXPORTED_RUNTIME_METHODS`, so a compile
+     always gets its stack back.
+   - add `--profiling-funcs`, so failures report function names (costs about
+     200 KB gzipped).
+   These belong in `src/hxc/Compiler.hx`'s `@:buildXml` eventually.
+4. With `C:\emsdk\emsdk_env.bat` active, `haxelib run hxcpp Build.xml haxe
+   <defines from out/Options.txt>`. hxcpp also reads `Options.txt`, so remove
+   any define there that shouldn't apply. The final strip step fails on Windows
+   and can be ignored: it would remove the function names anyway.
+5. Copy `Compiler.wasm` / `Compiler.data` to `assets/hxc.wasm` / `assets/hxc.data`,
+   and `Compiler.js` to `assets/hxc.js` with `Compiler.data` / `Compiler.wasm`
+   renamed inside it.
+
+Then regenerate `assets/hxc.json` with the unpacked sizes and a new build id.
+GitHub Pages gzips both files on the fly and reports the compressed size, so
+the boot progress bar takes its totals from this file. The build id versions
+all three compiler files together, so a cached one is never paired with a new
+one.
 
 ```
-python -c "import os,json;print(json.dumps({f:os.path.getsize('assets/'+f) for f in ('hxc.wasm','hxc.data')},indent=2))" > assets/hxc.json
+python -c "import os,json;d={f:os.path.getsize('assets/'+f) for f in ('hxc.wasm','hxc.data')};d['build']='<build id>';print(json.dumps(d,indent=2))" > assets/hxc.json
 ```
 
 Also bump `ASSET_VERSION` in `app.js` and the `?v=` numbers in `index.html`.
+After changing a served library, run `python tools/pack-libs.py` and bump
+`VERSION` in `assets/libs.js`.
 
 ## Swapping the stub for the real compiler
 

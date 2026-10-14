@@ -4,10 +4,10 @@
 
 Writes one assets/libs/<name>.json per library, taken from whatever version
 `haxelib libpath` reports, plus assets/libs/index.json listing them. A project
-gets one with `-lib <name>` in its build.hxml (or, for Feathers UI, just by
-importing feathers.*); dependencies named in haxelib.json are pulled in the same
-way. Each compiler instance writes a library under /libs/<name> once. OpenFL and
-Lime are not here: they are already packed into hxc.data.
+gets one with `-lib <name>` in its build.hxml (or, for OpenFL, Lime and Feathers
+UI, just by importing them); dependencies named in haxelib.json are pulled in
+the same way. Each compiler instance writes a library under /libs/<name> once.
+hxc.data carries only the standard library, so plain Haxe never downloads these.
 
 Each library's license file is included and written next to its sources, and
 its extraParams.hxml, if any, is applied wherever it is used. Sources are packed
@@ -20,7 +20,7 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LIBS = ["feathersui", "actuate"]
+LIBS = ["feathersui", "actuate", "openfl", "lime"]
 
 
 def libpath(name):
@@ -38,11 +38,11 @@ def pack(name):
             if n.endswith(".hx"):
                 full = os.path.join(dirpath, n)
                 rel = os.path.relpath(full, src).replace(os.sep, "/")
-                files[rel] = open(full, encoding="utf-8").read()
+                files[rel] = open(full, encoding="utf-8", newline="").read()
     for lic in ("LICENSE.md", "LICENSE.txt", "LICENSE"):
         p = os.path.join(base, lic)
         if os.path.exists(p):
-            files[lic] = open(p, encoding="utf-8").read()
+            files[lic] = open(p, encoding="utf-8", newline="").read()
             break
     extra = os.path.join(base, "extraParams.hxml")
     return {
@@ -50,7 +50,7 @@ def pack(name):
         "version": meta["version"],
         "license": meta.get("license", ""),
         "dependencies": meta.get("dependencies", {}),
-        "extraParams": open(extra, encoding="utf-8").read() if os.path.exists(extra) else "",
+        "extraParams": open(extra, encoding="utf-8", newline="").read() if os.path.exists(extra) else "",
         "files": files,
     }
 

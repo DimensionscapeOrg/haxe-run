@@ -22,7 +22,7 @@ const info = await haxeRun.ready();
 // { version: "1.0", compiler: "hxc", language: "Haxe 4.3", targets: ["js"] }
 ```
 
-The compiler is about 8 MB compressed (35 MB unpacked) and takes a few seconds to
+The compiler is about 9 MB compressed (39 MB unpacked) and takes a few seconds to
 download and instantiate on first load; it is cached afterwards. `ready()`
 resolves when it can accept work, and is safe to call any number of times. Every other method awaits it internally, so
 calling `compile()` immediately also works; `ready()` just lets you observe the
@@ -169,7 +169,8 @@ await haxeRun.run({
 
 Importing anything from `openfl.*`, or `-lib openfl` in `build.hxml`, switches
 the build to an OpenFL/Lime html5 application automatically; the
-`ApplicationMain` bootstrap is injected for you.
+`ApplicationMain` bootstrap is injected for you. OpenFL and Lime are fetched the
+first time a project needs them, about 1.4 MB, and cached.
 Two consequences worth planning for:
 
 - An OpenFL project has no `static function main`. It is a `Sprite` subclass, and

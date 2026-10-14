@@ -41,9 +41,6 @@
 
   var DIAG_RE = /^(.+\.hx):(\d+):(?:\s*(?:lines?\s+\d+-\d+|character[s]?\s+(\d+)(?:-(\d+))?)\s*:)?\s*(.*)$/;
 
-  var OPENFL_VERSION = "9.5.2";
-  var LIME_VERSION = "8.4.0";
-
   // A compile that leaks more than this much shadow stack has almost certainly
   // died mid-recursion rather than returning cleanly (a clean compile leaks the
   // ~1 KB argv allocation and nothing else).
@@ -81,20 +78,16 @@
   // name openfl itself (it extends feathers.controls.Application).
   function usesOpenFL(files) {
     return Object.keys(files).some(function (n) {
-      return /(^|[^\w.])(openfl|feathers)\./.test(files[n]);
+      return /(^|[^\w.])(openfl|lime|feathers)\./.test(files[n]);
     });
   }
 
-  // OpenFL and Lime sources are packed into the wasm filesystem at /libs/openfl
-  // and /libs/lime. A project that imports openfl gets those class paths plus
-  // the init macros that `-lib openfl -lib lime` would contribute via haxelib.
+  // OpenFL and Lime themselves arrive as libraries (assets/libs.js resolves
+  // them like any other), bringing their class paths, defines and the init
+  // macros from their extraParams.hxml. What's left is what `openfl build html5`
+  // would add on top.
   function openflArgs() {
     return [
-      "--macro", "lime._internal.macros.DefineMacro.run()",
-      "--macro", 'haxe.macro.Compiler.addMetadata("@:autoBuild(lime._internal.macros.AssetsMacro.embedBytes())","haxe.io.Bytes")',
-      "-cp", "/libs/lime", "-D", "lime=" + LIME_VERSION,
-      "--macro", "openfl.utils._internal.ExtraParamsMacro.include()",
-      "-cp", "/libs/openfl", "-D", "openfl=" + OPENFL_VERSION,
       // Platform + renderer defines that lime's tooling normally injects for an
       // `openfl build html5`. Without a renderer define the html5 backend is
       // #if'd out, so the app boots and traces but never draws (a black stage).
@@ -447,8 +440,6 @@
     }
     (bundles || []).forEach(function (bundle) {
       (bundle.libs || []).forEach(function (lib) {
-        // OpenFL and Lime come with hxc.data and are never replaced.
-        if (lib.name === "openfl" || lib.name === "lime") return;
         var key = lib.key || (lib.name + "@" + lib.version);
         if (done[lib.name] === key) return;
         var root = "/libs/" + lib.name;
