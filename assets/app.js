@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "24";
+  var ASSET_VERSION = "25";
 
   /* Light mode, for phones and tablets, very low-memory devices, and any tab
    * that died here before. Mobile browsers kill a tab that uses too much memory
@@ -298,8 +298,10 @@
       delete state.pending[msg.id];
       entry.resolve({ id: msg.id, ok: false, diagnostics: [{
         severity: "error", file: "", line: 1, column: 1, endLine: 1, endColumn: 1,
-        message: "this input is too deeply recursive for the compiler to finish here",
-        code: "overflow"
+        message: "The compiler ran out of stack space in this browser. This is a limit of the " +
+                 "browser, not a problem in your code. Reloading the page may help; desktop " +
+                 "Chrome, Edge and Firefox handle it best.",
+        code: "browser-limit"
       }], outputs: {}, runnable: false, timeMs: 0, log: [], stats: {} });
     });
   }
@@ -1183,9 +1185,11 @@
         '<span class="problem-sev">' + (d.severity === "error" ? "&#10005;" : "&#9888;") + "</span>" +
         '<span class="problem-msg"></span><span class="problem-loc"></span>';
       li.querySelector(".problem-msg").textContent = d.message;
-      li.querySelector(".problem-loc").textContent =
-        (multi ? d.file + " " : "") + d.line + ":" + d.column;
-      li.onclick = function () { revealAt(d.file, d.line, d.column); };
+      // A diagnostic with no file is about the compiler or the browser, not a
+      // place in the code, so it has no location to show or jump to.
+      li.querySelector(".problem-loc").textContent = d.file
+        ? (multi ? d.file + " " : "") + d.line + ":" + d.column : "";
+      if (d.file) li.onclick = function () { revealAt(d.file, d.line, d.column); };
       list.appendChild(li);
     });
 

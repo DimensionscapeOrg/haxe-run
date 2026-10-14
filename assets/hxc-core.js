@@ -306,6 +306,14 @@
 
   // Which stack died. "native" is recoverable by retrying on a thread with a
   // bigger call stack; "trap" is not, but both poison the instance.
+  var STACK_MESSAGE = "The compiler ran out of stack space in this browser. This is a limit of " +
+    "the browser, not a problem in your code. Reloading the page may help; desktop Chrome, Edge " +
+    "and Firefox handle it best.";
+  var FAULT_MESSAGE = "The compiler crashed in this browser. This is not a problem in your code; " +
+    "reloading the page starts it fresh.";
+  var MEMORY_MESSAGE = "The compiler ran out of memory in this browser. This is not a problem in " +
+    "your code; it has been restarted, so running again may work.";
+
   // Engines word these differently. Chromium: RangeError "Maximum call stack
   // size exceeded", "memory access out of bounds". Firefox: InternalError "too
   // much recursion", "index out of bounds". Safari: RangeError "Maximum call
@@ -509,15 +517,17 @@
     var ok = exitCode === 0 && !hadError;
 
     if (!ok && !hadError) {
+      // A stack overflow or a wasm fault is the compiler hitting a limit of the
+      // browser, not anything in the user's code, so it is pinned to no file:
+      // no squiggle on a line that did nothing wrong.
       diags.push({
-        severity: "error", file: (Object.keys(files)[0] || ""),
+        severity: "error", file: (failure || outOfMemory) ? "" : (Object.keys(files)[0] || ""),
         line: 1, column: 1, endLine: 1, endColumn: 1,
-        message: failure === "native"
-          ? "the compiler ran out of call stack on this input"
-          : (failure === "trap"
-              ? "the compiler hit a fault on this input"
-              : (rawText.trim() || ("compilation failed (exit " + exitCode + ")"))),
-        code: failure ? "overflow" : ""
+        message: failure === "native" ? STACK_MESSAGE
+          : (failure === "trap" ? FAULT_MESSAGE
+              : (outOfMemory ? MEMORY_MESSAGE
+                  : (rawText.trim() || ("compilation failed (exit " + exitCode + ")")))),
+        code: (failure || outOfMemory) ? "browser-limit" : ""
       });
     }
 
