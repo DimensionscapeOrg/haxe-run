@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "25";
+  var ASSET_VERSION = "26";
 
   /* Light mode, for phones and tablets, very low-memory devices, and any tab
    * that died here before. Mobile browsers kill a tab that uses too much memory
@@ -123,10 +123,30 @@
       return n;
     } catch (e) { return 0; }
   })();
+  // Light mode is automatic unless the person chose: "light" or "normal" in
+  // Options, remembered in this browser. A crash still turns it on.
+  var MODE_KEY = "hxr-mode";
+  var chosenMode = (function () { try { return localStorage.getItem(MODE_KEY) || "auto"; } catch (e) { return "auto"; } })();
+  var autoLight = (!!window.matchMedia && matchMedia("(pointer: coarse)").matches &&
+                   Math.min(screen.width, screen.height) < 900) ||
+                  (!!navigator.deviceMemory && navigator.deviceMemory <= 2);
   var LIGHT = /[?&]light\b/.test(location.search) || crashes > 0 ||
-    (!!window.matchMedia && matchMedia("(pointer: coarse)").matches &&
-     Math.min(screen.width, screen.height) < 900) ||
-    (!!navigator.deviceMemory && navigator.deviceMemory <= 2);
+    (chosenMode === "light") || (chosenMode !== "normal" && autoLight);
+
+  function setMode(mode) {
+    try {
+      if (mode === "auto") localStorage.removeItem(MODE_KEY);
+      else localStorage.setItem(MODE_KEY, mode);
+      // Choosing a mode is a fresh start: forget earlier crashes in this tab.
+      sessionStorage.removeItem(CRASHES_KEY);
+      sessionStorage.removeItem(STAGE_KEY);
+    } catch (e) {}
+    location.reload();
+  }
+
+  // Closing or reloading the page normally clears the marker; a tab killed for
+  // running out of memory never gets here, which is what makes the marker work.
+  window.addEventListener("pagehide", function () { markBusy(false); });
 
   function markBusy(on, stage) {
     try {
@@ -2242,7 +2262,15 @@
       : "The last visit ran out of memory, so haxe.run is in light mode: the compiler starts when " +
         "you open a playground, and completion is off.";
     var note = $("lightNote");
-    if (note) { note.textContent = text; note.hidden = false; }
+    if (note) {
+      note.textContent = text + " ";
+      var back = document.createElement("button");
+      back.className = "btn btn-tiny";
+      back.textContent = "Switch back to normal mode";
+      back.onclick = function () { setMode("normal"); };
+      note.appendChild(back);
+      note.hidden = false;
+    }
     toast(text, 9000);   // for anyone who lands straight in a playground from a link
     // What it was doing and on what, so a crash on someone's phone can be reported.
     deviceSummary().then(function (dev) {
@@ -2359,6 +2387,11 @@
       writeOptions(); store(LS.options, state.options);
       state.dirty = true; maybeAutoCompile();
     };
+    var modeSel = $("optMode");
+    if (modeSel) {
+      modeSel.value = chosenMode;
+      modeSel.onchange = function () { setMode(modeSel.value); };
+    }
     $("optHxml").onclick = function () {
       toggleOptions(false);
       if (!addFile(HxrLibs.HXML, HXML_TEMPLATE)) switchFile(HxrLibs.HXML);

@@ -60,6 +60,14 @@
         <textarea id="optDefines" class="opt-defines" spellcheck="false" placeholder="my_flag&#10;level=3"></textarea>
       </div>
       <div class="opt-row">
+        <label for="optMode">Light mode (phones, low memory)</label>
+        <select id="optMode" class="control control-sm">
+          <option value="auto">automatic</option>
+          <option value="light">always on</option>
+          <option value="normal">off</option>
+        </select>
+      </div>
+      <div class="opt-row">
         <span class="opt-libs">Libraries come from a <code>build.hxml</code> file</span>
         <button id="optHxml" class="btn btn-tiny">Add build.hxml</button>
       </div>
@@ -189,7 +197,7 @@
 <script src="assets/hxc-core.js?v=20"></script>
 <script src="assets/hxc-mainthread.js?v=20"></script>
 <script src="assets/libs.js?v=7"></script>
-<script src="assets/app.js?v=56"></script>
+<script src="assets/app.js?v=57"></script>
 <script src="assets/agent-api.js?v=8"></script>
 </body>
 </html>
