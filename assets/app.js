@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "20";
+  var ASSET_VERSION = "21";
 
   var worker = null;      // primary: the Worker, where compiles normally run
   var fallback = null;    // main-thread engine, built on demand (see retryOnFallback)
@@ -497,17 +497,15 @@
   }
 
   /* Completion, hover and signature help run on a Worker of their own, so a
-   * Run never waits behind keystrokes. It is also disposable: a fresh instance
-   * only costs an instantiate of the module already in hand. The compiler
-   * shipped here (the July 2026 build) slows down sharply after a handful of
-   * display requests, about 50 ms each at first and then several seconds, so the
-   * instance is replaced every few requests. Current hxc answers each in ~10 ms
-   * indefinitely: set DISPLAY_RECYCLE_AFTER to Infinity when it ships.
+   * Run never waits behind keystrokes. It is also disposable: if a request is
+   * ever slow, the instance is replaced, which only costs an instantiate of the
+   * module already in hand. (The July 2026 compiler build slowed down sharply
+   * after a handful of display requests; current hxc answers each in ~10 ms.)
    *
    * Requests are coalesced per kind: while one is in flight, a newer request
    * of the same kind replaces the waiting one, which resolves empty. Fast
    * typing only ever costs the latest keystroke. */
-  var DISPLAY_RECYCLE_AFTER = 3;
+  var DISPLAY_RECYCLE_AFTER = Infinity;
   var DISPLAY_SLOW_MS = 800;
   var DISPLAY_TIMEOUT_MS = 8000;
   var DISPLAY_ORDER = ["complete", "signature", "hover"];

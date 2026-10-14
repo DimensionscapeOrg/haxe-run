@@ -2362,6 +2362,7 @@ class HTML5Application
 	private var lastUpdate:Float;
 	private var nextUpdate:Float;
 	private var parent:Application;
+	private var preferVisibilityChange:Bool;
 	#if stats
 	private var stats:Dynamic;
 	#end
@@ -2374,6 +2375,36 @@ class HTML5Application
 		lastUpdate = 0;
 		nextUpdate = 0;
 		framePeriod = -1;
+
+		// mobile Safari sometimes dispatches the blur event, but completely
+		// skips the matching focus event. for instance, when opening the tab
+		// switcher and returning to the exact same tab. it may depend on which
+		// type of HTML element has focus, though.
+		//
+		// sometimes, mobile Safari doesn't dispatch the blur and focus events
+		// at all! however, it always dispatches the visibilitychange event when
+		// switching to a different tab, or to a different app, so we prefer to
+		// use visibilitychange instead, but only on iOS.
+		//
+		// on desktop, we should continue to use the blur and focus events
+		// because the page will be considered to remain visible when losing
+		// focus to another app. the visibilitychange event seems to be
+		// dispatched on desktop when changing tabs only. desktop Safari behaves
+		// like other desktop browsers.
+		//
+		// Note: Android behaves more similarly to desktop than to iOS.
+
+		#if haxe4
+		preferVisibilityChange = js.Lib.typeof(Browser.document.visibilityState) == "string"
+			&& ~/(iPad|iPhone|iPod).*OS/gi.match(Browser.window.navigator.userAgent);
+		#else
+		preferVisibilityChange = untyped __js__ ('typeof document.visibilityState === "string"')
+			&& ~/(iPad|iPhone|iPod).*OS/gi.match(Browser.window.navigator.userAgent);
+		#end
+		if (preferVisibilityChange)
+		{
+			hidden = Browser.document.hidden;
+		}
 
 		AudioManager.init();
 		accelerometer = Sensor.registerSensor(SensorType.ACCELEROMETER, 0);
@@ -2601,7 +2632,7 @@ class HTML5Application
 
 	public function configureFrameTiming(profile:FrameProfile, frameRate:Float, options:FrameOptions):Void
 	{
-		if (frameRate >= 60)
+		if (frameRate == 0 || frameRate >= 60)
 		{
 			framePeriod = -1;
 		}
@@ -2623,6 +2654,7 @@ class HTML5Application
 		Browser.window.addEventListener("blur", handleWindowEvent, false);
 		Browser.window.addEventListener("resize", handleWindowEvent, false);
 		Browser.window.addEventListener("beforeunload", handleWindowEvent, false);
+		Browser.document.addEventListener("visibilitychange", handleWindowEvent, false);
 
 		if (Reflect.hasField(Browser.window, "Accelerometer"))
 		{
@@ -2816,7 +2848,7 @@ class HTML5Application
 			switch (event.type)
 			{
 				case "focus":
-					if (hidden)
+					if (!preferVisibilityChange && hidden)
 					{
 						parent.window.onFocusIn.dispatch();
 						parent.window.onActivate.dispatch();
@@ -2824,7 +2856,7 @@ class HTML5Application
 					}
 
 				case "blur":
-					if (!hidden)
+					if (!preferVisibilityChange && !hidden)
 					{
 						parent.window.onFocusOut.dispatch();
 						parent.window.onDeactivate.dispatch();
@@ -2832,23 +2864,17 @@ class HTML5Application
 					}
 
 				case "visibilitychange":
-					if (Browser.document.hidden)
+					if (Browser.document.hidden && !hidden)
 					{
-						if (!hidden)
-						{
-							parent.window.onFocusOut.dispatch();
-							parent.window.onDeactivate.dispatch();
-							hidden = true;
-						}
+						parent.window.onFocusOut.dispatch();
+						parent.window.onDeactivate.dispatch();
+						hidden = true;
 					}
-					else
+					else if (!Browser.document.hidden && hidden)
 					{
-						if (hidden)
-						{
-							parent.window.onFocusIn.dispatch();
-							parent.window.onActivate.dispatch();
-							hidden = false;
-						}
+						parent.window.onFocusIn.dispatch();
+						parent.window.onActivate.dispatch();
+						hidden = false;
 					}
 
 				case "resize":
@@ -5837,6 +5863,7 @@ class HTML5Window
 
 	private var cacheElementHeight:Float;
 	private var cacheElementWidth:Float;
+	private var cacheElementScale:Float;
 	private var cacheMouseX:Float;
 	private var cacheMouseY:Float;
 	private var cursor:MouseCursor;
@@ -5848,6 +5875,9 @@ class HTML5Window
 	private var requestedFullscreen:Bool;
 	private var resizeElement:Bool;
 	private var scale = 1.0;
+	#if !lime_disable_window_scale_change
+	private var devicePixelRatioMediaQuery:js.html.MediaQueryList;
+	#end
 	private var setHeight:Int;
 	private var setWidth:Int;
 	private var textInputEnabled:Bool;
@@ -5889,6 +5919,10 @@ class HTML5Window
 		}
 
 		parent.__scale = scale;
+
+		#if !lime_disable_window_scale_change
+		watchDevicePixelRatio();
+		#end
 
 		setWidth = Reflect.hasField(attributes, "width") ? attributes.width : 0;
 		setHeight = Reflect.hasField(attributes, "height") ? attributes.height : 0;
@@ -5949,6 +5983,7 @@ class HTML5Window
 
 			cacheElementWidth = parent.__width;
 			cacheElementHeight = parent.__height;
+			cacheElementScale = scale;
 
 			resizeElement = true;
 		}
@@ -7128,6 +7163,35 @@ class HTML5Window
 		return value;
 	}
 
+	#if !lime_disable_window_scale_change
+	private function watchDevicePixelRatio(?e:Dynamic):Void
+	{
+		scale = Browser.window.devicePixelRatio;
+		if (parent.__scale != scale)
+		{
+			parent.__scale = scale;
+			parent.onDisplayScaleChange.dispatch();
+			updateSize();
+		}
+		if (devicePixelRatioMediaQuery != null)
+		{
+			#if haxe4
+			devicePixelRatioMediaQuery.removeEventListener("change", watchDevicePixelRatio);
+			#else
+			devicePixelRatioMediaQuery.removeListener(watchDevicePixelRatio);
+			#end
+			devicePixelRatioMediaQuery = null;
+		}
+		var mediaQueryString = '(resolution: ${scale}dppx)';
+		devicePixelRatioMediaQuery = Browser.window.matchMedia(mediaQueryString);
+		#if haxe4
+		devicePixelRatioMediaQuery.addEventListener("change", watchDevicePixelRatio);
+		#else
+		devicePixelRatioMediaQuery.addListener(watchDevicePixelRatio);
+		#end
+	}
+	#end
+
 	private function updateSize():Void
 	{
 		if (!parent.__resizable) return;
@@ -7146,10 +7210,12 @@ class HTML5Window
 			elementHeight = Browser.window.innerHeight;
 		}
 
-		if (elementWidth != cacheElementWidth || elementHeight != cacheElementHeight)
+		var scaleChanged = scale != cacheElementScale;
+		if (elementWidth != cacheElementWidth || elementHeight != cacheElementHeight || scaleChanged)
 		{
 			cacheElementWidth = elementWidth;
 			cacheElementHeight = elementHeight;
+			cacheElementScale = scale;
 
 			var stretch = resizeElement || (setWidth == 0 && setHeight == 0);
 
@@ -7157,7 +7223,7 @@ class HTML5Window
 			{
 				if (stretch)
 				{
-					if (parent.__width != elementWidth || parent.__height != elementHeight)
+					if (parent.__width != elementWidth || parent.__height != elementHeight || scaleChanged)
 					{
 						parent.__width = Std.int(elementWidth);
 						parent.__height = Std.int(elementHeight);
@@ -7294,6 +7360,10 @@ class NativeApplication
 	private var touchEventInfo = new TouchEventInfo();
 	private var unusedTouchesPool = new List<Touch>();
 	private var windowEventInfo = new WindowEventInfo();
+	#if (!macro && lime_cffi && windows && !winrt)
+	private var modalException:Dynamic;
+	private var modalExceptionPending = false;
+	#end
 
 	public var handle:Dynamic;
 
@@ -7363,6 +7433,12 @@ class NativeApplication
 		NativeCFFI.lime_text_event_manager_register(handleTextEvent, textEventInfo);
 		NativeCFFI.lime_touch_event_manager_register(handleTouchEvent, touchEventInfo);
 		NativeCFFI.lime_window_event_manager_register(handleWindowEvent, windowEventInfo);
+		#if (windows && !winrt)
+		NativeCFFI.lime_application_set_modal_callbacks(handle,
+			function() runModalCallback(handleApplicationEvent),
+			function() runModalCallback(handleRenderEvent),
+			function() runModalCallback(handleWindowEvent), rethrowModalException);
+		#end
 
 		#if (ios || android)
 		NativeCFFI.lime_orientation_event_manager_register(handleOrientationEvent, orientationEventInfo);
@@ -7433,6 +7509,32 @@ class NativeApplication
 		NativeCFFI.lime_application_set_vsync_mode(handle, __convertVSyncMode(mode));
 		#end
 	}
+
+	#if (!macro && lime_cffi && windows && !winrt)
+	private function runModalCallback(callback:Void->Void):Void
+	{
+		if (modalExceptionPending) return;
+		try
+		{
+			callback();
+		}
+		catch (exception:Dynamic)
+		{
+			// Keep the value rooted in Haxe; do not unwind through SDL/Win32.
+			modalException = exception;
+			modalExceptionPending = true;
+			NativeCFFI.lime_application_defer_modal_exception(handle);
+		}
+	}
+
+	private function rethrowModalException():Void
+	{
+		var exception = modalException;
+		modalException = null;
+		modalExceptionPending = false;
+		throw exception;
+	}
+	#end
 
 	private function handleApplicationEvent():Void
 	{
@@ -7873,6 +7975,17 @@ class NativeApplication
 					window.onMove.dispatch(windowEventInfo.x, windowEventInfo.y);
 
 				case WINDOW_RESIZE:
+					#if !lime_disable_window_scale_change
+					#if (lime_cffi && !macro)
+					// SDL2 reports scale changes as window resizes
+					var newScale = NativeCFFI.lime_window_get_scale(window.__backend.handle);
+					if (window.__scale != newScale)
+					{
+						window.__scale = newScale;
+						window.onDisplayScaleChange.dispatch();
+					}
+					#end
+					#end
 					window.__width = windowEventInfo.width;
 					window.__height = windowEventInfo.height;
 					window.onResize.dispatch(windowEventInfo.width, windowEventInfo.height);
@@ -8970,7 +9083,7 @@ class NativeAudioSource
 
 	private function clearSDLSoundStream():Void
 	{
-		#if lime_sdl_sound
+		#if (lime_sdl_sound && !macro)
 		if (sdlSoundStream != null)
 		{
 			NativeCFFI.lime_sdl_sound_stream_clear(sdlSoundStream);
@@ -9005,7 +9118,7 @@ class NativeAudioSource
 
 	private function openSDLSoundStream():Bool
 	{
-		#if lime_sdl_sound
+		#if (lime_sdl_sound && !macro)
 		clearSDLSoundStream();
 
 		if (parent.buffer.__srcSDLSoundBytes != null)
@@ -9063,7 +9176,7 @@ class NativeAudioSource
 
 	private function resetSDLSoundStream(time:Int):Bool
 	{
-		#if lime_sdl_sound
+		#if (lime_sdl_sound && !macro)
 		if (time < 0)
 		{
 			time = 0;
@@ -9343,7 +9456,7 @@ class NativeAudioSource
 
 	private function readSDLSoundBuffer(length:Int):Int
 	{
-		#if lime_sdl_sound
+		#if (lime_sdl_sound && !macro)
 		if (sdlSoundStream == null || length <= 0 || streamByteRate <= 0)
 		{
 			return 0;
@@ -10020,6 +10133,9 @@ class NativeCFFI
 	@:cffi private static function lime_application_set_main_loop(handle:Dynamic, profile:Int, frameRate:Float, timePrecision:Int, busyWait:Int,
 		uncapMode:Int):Void;
 
+	@:cffi private static function lime_application_set_modal_callbacks(handle:Dynamic, update:Dynamic, render:Dynamic, window:Dynamic, rethrow:Dynamic):Void;
+	@:cffi private static function lime_application_defer_modal_exception(handle:Dynamic):Void;
+
 	@:cffi private static function lime_application_set_frame_rate(handle:Dynamic, value:Float):Void;
 
 	@:cffi private static function lime_application_set_vsync_mode(handle:Dynamic, value:Int):Void;
@@ -10114,6 +10230,10 @@ class NativeCFFI
 
 	@:cffi private static function lime_font_get_units_per_em(handle:Dynamic):Int;
 
+	@:cffi private static function lime_font_is_bold(handle:Dynamic):Bool;
+
+	@:cffi private static function lime_font_is_italic(handle:Dynamic):Bool;
+
 	@:cffi private static function lime_font_load(data:Dynamic):Dynamic;
 
 	@:cffi private static function lime_font_load_bytes(data:Dynamic):Dynamic;
@@ -10131,6 +10251,10 @@ class NativeCFFI
 	@:cffi private static function lime_font_render_glyphs(handle:Dynamic, indices:Dynamic, data:Dynamic):Dynamic;
 
 	@:cffi private static function lime_font_set_size(handle:Dynamic, size:Int, dpi:Int):Void;
+
+	@:cffi private static function lime_font_set_stem_darkening(handle:Dynamic, enable:Bool):Void;
+
+	@:cffi private static function lime_font_set_stem_darkening_parameters(handle:Dynamic, params:Array<Int>):Void;
 
 	@:cffi private static function lime_gamepad_add_mappings(mappings:Dynamic):Void;
 
@@ -10670,6 +10794,9 @@ class NativeCFFI
 	private static var lime_application_quit = new cpp.Callable<cpp.Object->Int>(cpp.Prime._loadPrime("lime", "lime_application_quit", "oi", false));
 	private static var lime_application_set_main_loop = new cpp.Callable<cpp.Object->Int->Float->Int->Int->Int->cpp.Void>(cpp.Prime._loadPrime("lime",
 		"lime_application_set_main_loop", "oidiiiv", false));
+	private static var lime_application_set_modal_callbacks = new cpp.Callable<cpp.Object->cpp.Object->cpp.Object->cpp.Object->cpp.Object->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_application_set_modal_callbacks", "ooooov", false));
+	private static var lime_application_defer_modal_exception = new cpp.Callable<cpp.Object->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_application_defer_modal_exception", "ov", false));
+
 	private static var lime_application_set_frame_rate = new cpp.Callable<cpp.Object->Float->cpp.Void>(cpp.Prime._loadPrime("lime",
 		"lime_application_set_frame_rate", "odv", false));
 	private static var lime_application_set_vsync_mode = new cpp.Callable<cpp.Object->Int->cpp.Void>(cpp.Prime._loadPrime("lime",
@@ -10754,6 +10881,8 @@ class NativeCFFI
 	private static var lime_font_get_strikethrough_thickness = new cpp.Callable<cpp.Object->Int>(cpp.Prime._loadPrime("lime",
 		"lime_font_get_strikethrough_thickness", "oi", false));
 	private static var lime_font_get_units_per_em = new cpp.Callable<cpp.Object->Int>(cpp.Prime._loadPrime("lime", "lime_font_get_units_per_em", "oi", false));
+	private static var lime_font_is_bold = new cpp.Callable<cpp.Object->Bool>(cpp.Prime._loadPrime("lime", "lime_font_is_bold", "ob", false));
+	private static var lime_font_is_italic = new cpp.Callable<cpp.Object->Bool>(cpp.Prime._loadPrime("lime", "lime_font_is_italic", "ob", false));
 	private static var lime_font_load = new cpp.Callable<cpp.Object->cpp.Object>(cpp.Prime._loadPrime("lime", "lime_font_load", "oo", false));
 	private static var lime_font_load_bytes = new cpp.Callable<cpp.Object->cpp.Object>(cpp.Prime._loadPrime("lime", "lime_font_load_bytes", "oo", false));
 	private static var lime_font_load_file = new cpp.Callable<cpp.Object->cpp.Object>(cpp.Prime._loadPrime("lime", "lime_font_load_file", "oo", false));
@@ -10768,6 +10897,8 @@ class NativeCFFI
 	private static var lime_font_render_glyphs = new cpp.Callable<cpp.Object->cpp.Object->cpp.Object->cpp.Object>(cpp.Prime._loadPrime("lime",
 		"lime_font_render_glyphs", "oooo", false));
 	private static var lime_font_set_size = new cpp.Callable<cpp.Object->Int->Int->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_font_set_size", "oiiv", false));
+	private static var lime_font_set_stem_darkening = new cpp.Callable<cpp.Object->Bool->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_font_set_stem_darkening", "obv", false));
+	private static var lime_font_set_stem_darkening_parameters = new cpp.Callable<cpp.Object->cpp.Object->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_font_set_stem_darkening_parameters", "oov", false));
 	private static var lime_gamepad_add_mappings = new cpp.Callable<cpp.Object->cpp.Void>(cpp.Prime._loadPrime("lime", "lime_gamepad_add_mappings", "ov",
 		false));
 	private static var lime_gamepad_get_device_guid = new cpp.Callable<Int->cpp.Object>(cpp.Prime._loadPrime("lime", "lime_gamepad_get_device_guid", "io",
@@ -11182,6 +11313,8 @@ class NativeCFFI
 	private static var lime_application_quit = CFFI.load("lime", "lime_application_quit", 1);
 	private static var lime_application_set_main_loop = CFFI.load("lime", "lime_application_set_main_loop", -1);
 	private static var lime_application_set_frame_rate = CFFI.load("lime", "lime_application_set_frame_rate", 2);
+	private static var lime_application_set_modal_callbacks = CFFI.load("lime", "lime_application_set_modal_callbacks", 5);
+	private static var lime_application_defer_modal_exception = CFFI.load("lime", "lime_application_defer_modal_exception", 1);
 	private static var lime_application_set_vsync_mode = CFFI.load("lime", "lime_application_set_vsync_mode", 2);
 	private static var lime_application_update = CFFI.load("lime", "lime_application_update", 1);
 	private static var lime_audio_load = CFFI.load("lime", "lime_audio_load", 2);
@@ -11228,6 +11361,8 @@ class NativeCFFI
 	private static var lime_font_get_strikethrough_position = CFFI.load("lime", "lime_font_get_strikethrough_position", 1);
 	private static var lime_font_get_strikethrough_thickness = CFFI.load("lime", "lime_font_get_strikethrough_thickness", 1);
 	private static var lime_font_get_units_per_em = CFFI.load("lime", "lime_font_get_units_per_em", 1);
+	private static var lime_font_is_bold = CFFI.load("lime", "lime_font_is_bold", 1);
+	private static var lime_font_is_italic = CFFI.load("lime", "lime_font_is_italic", 1);
 	private static var lime_font_load = CFFI.load("lime", "lime_font_load", 1);
 	private static var lime_font_load_bytes = CFFI.load("lime", "lime_font_load_bytes", 1);
 	private static var lime_font_load_file = CFFI.load("lime", "lime_font_load_file", 1);
@@ -11237,6 +11372,8 @@ class NativeCFFI
 	private static var lime_font_render_glyph_with_flags = CFFI.load("lime", "lime_font_render_glyph_with_flags", 4);
 	private static var lime_font_render_glyphs = CFFI.load("lime", "lime_font_render_glyphs", 3);
 	private static var lime_font_set_size = CFFI.load("lime", "lime_font_set_size", 3);
+	private static var lime_font_set_stem_darkening = CFFI.load("lime", "lime_font_set_stem_darkening", 2);
+	private static var lime_font_set_stem_darkening_parameters = CFFI.load("lime", "lime_font_set_stem_darkening_parameters", 2);
 	private static var lime_gamepad_add_mappings = CFFI.load("lime", "lime_gamepad_add_mappings", 1);
 	private static var lime_gamepad_get_device_guid = CFFI.load("lime", "lime_gamepad_get_device_guid", 1);
 	private static var lime_gamepad_get_device_name = CFFI.load("lime", "lime_gamepad_get_device_name", 1);
@@ -11481,6 +11618,9 @@ class NativeCFFI
 	@:hlNative("lime", "hl_application_set_main_loop") private static function lime_application_set_main_loop(handle:CFFIPointer, profile:Int,
 		frameRate:Float, timePrecision:Int, busyWait:Int, uncapMode:Int):Void {}
 
+	@:hlNative("lime", "hl_application_set_modal_callbacks") private static function lime_application_set_modal_callbacks(handle:CFFIPointer, update:Void->Void, render:Void->Void, window:Void->Void, rethrow:Void->Void):Void {}
+	@:hlNative("lime", "hl_application_defer_modal_exception") private static function lime_application_defer_modal_exception(handle:CFFIPointer):Void {}
+
 	@:hlNative("lime", "hl_application_set_frame_rate") private static function lime_application_set_frame_rate(handle:CFFIPointer, value:Float):Void {}
 
 	@:hlNative("lime", "hl_application_set_vsync_mode") private static function lime_application_set_vsync_mode(handle:CFFIPointer, value:Int):Void {}
@@ -11694,6 +11834,16 @@ class NativeCFFI
 		return 0;
 	}
 
+	@:hlNative("lime", "hl_font_is_bold") private static function lime_font_is_bold(handle:CFFIPointer):Bool
+	{
+		return false;
+	}
+
+	@:hlNative("lime", "hl_font_is_italic") private static function lime_font_is_italic(handle:CFFIPointer):Bool
+	{
+		return false;
+	}
+
 	// @:hlNative("lime", "") private static function lime_font_load (data:Dynamic):Dynamic { return null; }
 	@:hlNative("lime", "hl_font_load_bytes") private static function lime_font_load_bytes(data:Bytes):CFFIPointer
 	{
@@ -11733,6 +11883,10 @@ class NativeCFFI
 	}
 
 	@:hlNative("lime", "hl_font_set_size") private static function lime_font_set_size(handle:CFFIPointer, size:Int, dpi:Int):Void {}
+
+	@:hlNative("lime", "hl_font_set_stem_darkening") private static function lime_font_set_stem_darkening(handle:CFFIPointer, enable:Bool):Void {}
+
+	@:hlNative("lime", "hl_font_set_stem_darkening_parameters") private static function lime_font_set_stem_darkening_parameters(handle:CFFIPointer, params:hl.NativeArray<Int>):Void {}
 
 	@:hlNative("lime", "hl_gamepad_add_mappings") private static function lime_gamepad_add_mappings(mappings:hl.NativeArray<String>):Void {}
 
@@ -70033,6 +70187,82 @@ class Font
 	 */
 	public var unitsPerEM:Int;
 
+	/**
+	 * Whether the font style is bold.
+	 */
+	public var isBold:Bool;
+
+	/**
+	 * Whether the font style is italic.
+	 */
+	public var isItalic:Bool;
+
+	/**
+		May be used enable stem darkening when rendering this font. Stem
+		darkening is designed to increase legibility of a font. If a font's stem
+		is measured to be narrower than the specified minimum threshold, it will
+		be "darkened" by making it a bit bolder.
+
+		This property enables affects the font rendering engine on native
+		targets only. On other targets, enabling stem darkening has no effect.
+
+		@see `Font.stemDarkeningParameters`
+	**/
+	public var stemDarkening(default, set):Bool;
+
+	private function set_stemDarkening(enable:Bool):Bool
+	{
+		if (stemDarkening == enable) {
+			return stemDarkening;
+		}
+		stemDarkening = enable;
+		#if (lime_cffi && !macro)
+		NativeCFFI.lime_font_set_stem_darkening(src, enable);
+		#end
+		return stemDarkening;
+	}
+
+	/**
+		Configure the stem darkening parameters, which is an array of exactly
+		eight integers, consisting of four pairs of x and y values. The x value
+		is the stem width, and the y value is the darkening amount. The units of
+		each value is 1/1000th of a pixel (so 0.5 pixel would be passed as a
+		value of `500`).
+
+		All values must be positive. Each stem width (x) value must be larger
+		than the previous stem width value. Each darkening amount (y) value must
+		be smaller than the previous darkening amount value.
+
+		For complete details, see the
+		[FreeType darkening-parameters documentation](https://freetype.org/freetype2/docs/reference/ft2-properties.html#darkening-parameters).
+
+		@see `Font.stemDarkening`
+	**/
+	public var stemDarkeningParameters(default, set):Array<Int>;
+
+	private function set_stemDarkeningParameters(params:Array<Int>):Array<Int>
+	{
+		if (params == null || params.length != 8)
+		{
+			throw "Darking parameters length must be exactly 8";
+		}
+		if (stemDarkeningParameters == params)
+		{
+			return stemDarkeningParameters;
+		}
+		stemDarkeningParameters = params;
+		#if (lime_cffi && !macro)
+		#if hl
+		var _params = new hl.NativeArray<Int>(params.length);
+		for (i in 0...params.length)
+			_params[i] = params[i];
+		var params = _params;
+		#end
+		NativeCFFI.lime_font_set_stem_darkening_parameters(src, params);
+		#end
+		return stemDarkeningParameters;
+	}
+
 	@:noCompletion private var __fontID:String;
 	@:noCompletion private var __fontPath:String;
 	#if lime_cffi
@@ -70539,6 +70769,8 @@ class Font
 			underlinePosition = other.underlinePosition;
 			underlineThickness = other.underlineThickness;
 			unitsPerEM = other.unitsPerEM;
+			isBold = other.isBold;
+			isItalic = other.isItalic;
 
 			__fontID = other.__fontID;
 			__fontPath = other.__fontPath;
@@ -70596,6 +70828,8 @@ class Font
 			strikethroughPosition = NativeCFFI.lime_font_get_strikethrough_position(src);
 			strikethroughThickness = NativeCFFI.lime_font_get_strikethrough_thickness(src);
 			unitsPerEM = NativeCFFI.lime_font_get_units_per_em(src);
+			isBold = NativeCFFI.lime_font_is_bold(src);
+			isItalic = NativeCFFI.lime_font_is_italic(src);
 		}
 		#end
 
@@ -74478,6 +74712,8 @@ class AssetHelper
 
 	public static function copyAsset(asset:Asset, destination:String, context:Dynamic = null)
 	{
+		System.mkdir(Path.directory(destination));
+
 		if (asset.sourcePath != "")
 		{
 			System.copyFile(asset.sourcePath, destination, context, asset.type == TEMPLATE);
@@ -79904,7 +80140,7 @@ class HashlinkHelper
 		}
 	}
 
-	public static function copyHashlink(project:HXProject, targetDirectory:String, applicationDirectory:String, executablePath:String, ?is64 = true)
+	public static function copyHashlink(project:HXProject, targetDirectory:String, applicationDirectory:String, executablePath:String, ?is64 = true, ?isArm = false)
 	{
 		var platform = project.target;
 		var bindir = switch project.target
@@ -79917,6 +80153,10 @@ class HashlinkHelper
 				Sys.exit(1);
 				"";
 		};
+		if (isArm)
+		{
+			bindir += "Arm";
+		}
 		if (is64)
 		{
 			bindir += "64";
@@ -82432,7 +82672,8 @@ class PlatformTarget
 			rebuild();
 		}
 
-		if (command == "update" || command == "build" || command == "test")
+		if (command == "update"
+				|| ((command == "build" || command == "test") && !targetFlags.exists("noupdate")))
 		{
 			logCommand("update");
 
@@ -87935,6 +88176,7 @@ class Window
 	public var onShow(default, null) = new Event<Void->Void>();
 	public var onTextEdit(default, null) = new Event<String->Int->Int->Void>();
 	public var onTextInput(default, null) = new Event<String->Void>();
+	public var onDisplayScaleChange(default, null) = new Event<Void->Void>();
 	public var opacity(get, set):Float;
 	public var parameters:Dynamic;
 	public var resizable(get, set):Bool;

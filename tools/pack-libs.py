@@ -10,25 +10,17 @@ way. Each compiler instance writes a library under /libs/<name> once. OpenFL and
 Lime are not here: they are already packed into hxc.data.
 
 Each library's license file is included and written next to its sources, and
-its extraParams.hxml, if any, is applied wherever it is used.
-
-Workaround, remove once the playground's compiler is rebuilt with the fix: hxc's
-macro encoder writes an empty `default:` as no default at all, so a switch in a
-class that goes through a build macro (every Feathers UI control does) loses
-it and fails with "Unmatched patterns". The packed copies spell those defaults
-`default: {}`, which means the same thing and survives the round trip.
+its extraParams.hxml, if any, is applied wherever it is used. Sources are packed
+exactly as haxelib has them.
 """
 
 import json
 import os
-import re
 import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIBS = ["feathersui", "actuate"]
-
-EMPTY_DEFAULT = re.compile(r"default:(\s*\n\s*\})")
 
 
 def libpath(name):
@@ -46,7 +38,7 @@ def pack(name):
             if n.endswith(".hx"):
                 full = os.path.join(dirpath, n)
                 rel = os.path.relpath(full, src).replace(os.sep, "/")
-                files[rel] = EMPTY_DEFAULT.sub(r"default: {}\1", open(full, encoding="utf-8").read())
+                files[rel] = open(full, encoding="utf-8").read()
     for lic in ("LICENSE.md", "LICENSE.txt", "LICENSE"):
         p = os.path.join(base, lic)
         if os.path.exists(p):

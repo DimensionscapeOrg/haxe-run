@@ -49,10 +49,10 @@
   // ~1 KB argv allocation and nothing else).
   var POISON_LEAK_BYTES = 65536;
 
-  // A wasm instance's memory only grows, up to 2 GB, and current hxc keeps a
-  // lot between compiles: an OpenFL build adds 500-700 MB. Past this much the
+  // A wasm instance's memory only grows, up to 2 GB. hxc releases each
+  // compilation now, and OpenFL builds level off around 1 GB; past this much an
   // instance answers and is then replaced, before a compile can run out.
-  var HEAP_RECYCLE_BYTES = 1024 * 1024 * 1024;
+  var HEAP_RECYCLE_BYTES = 1536 * 1024 * 1024;
 
   function parseDiags(lines) {
     var diags = [];
