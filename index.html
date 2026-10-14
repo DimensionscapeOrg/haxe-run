@@ -8,7 +8,7 @@
 <title>haxe.run | Haxe playground</title>
 <meta name="description" content="Compile and run Haxe in your browser with hxc. Live diagnostics, autocomplete, nothing to install.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="assets/app.css?v=12">
+<link rel="stylesheet" href="assets/app.css?v=13">
 </head>
 <body>
 
@@ -25,6 +25,12 @@
   <button id="backBtn" class="btn btn-docs" title="Back to playgrounds">&#8592; Playgrounds</button>
 
   <span id="projectName" class="project-name">untitled</span>
+
+  <!-- Phones show one pane at a time; this switches between them. -->
+  <div id="paneSwitch" class="pane-switch" role="tablist" aria-label="Show">
+    <button type="button" data-pane="editor" class="active" role="tab">Code</button>
+    <button type="button" data-pane="output" role="tab">Output</button>
+  </div>
 
   <div class="bar-spacer"></div>
 
@@ -197,7 +203,7 @@
 <script src="assets/hxc-core.js?v=20"></script>
 <script src="assets/hxc-mainthread.js?v=20"></script>
 <script src="assets/libs.js?v=7"></script>
-<script src="assets/app.js?v=57"></script>
+<script src="assets/app.js?v=58"></script>
 <script src="assets/agent-api.js?v=8"></script>
 </body>
 </html>

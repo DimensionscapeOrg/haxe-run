@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "26";
+  var ASSET_VERSION = "27";
 
   /* Light mode, for phones and tablets, very low-memory devices, and any tab
    * that died here before. Mobile browsers kill a tab that uses too much memory
@@ -1335,15 +1335,26 @@
       quiet = true;
     }
 
+    showPane("output");
     (needCompile ? compile({ quiet: quiet }) : Promise.resolve(state.lastResult)).then(function (res) {
       if (!res) return;
       if (!res.runnable) {
-        if (!res.ok) toast("Fix the errors before running");
+        if (!res.ok) { toast("Fix the errors before running"); showPane("editor"); }
         else toast("This target produced nothing to run");
         return;
       }
       executeRun();
     });
+  }
+
+  // Phones show one pane at a time (see .pane-switch in app.css); on wider
+  // screens both are always visible and this only keeps the switch in step.
+  function showPane(which) {
+    document.body.classList.toggle("show-output", which === "output");
+    [].forEach.call(document.querySelectorAll("#paneSwitch button"), function (b) {
+      b.classList.toggle("active", b.getAttribute("data-pane") === which);
+    });
+    if (state.editor && which === "editor") setTimeout(function () { state.editor.layout(); }, 0);
   }
 
   // Replace the stage iframe with a brand-new one carrying `html`. Built from
@@ -2392,6 +2403,9 @@
       modeSel.value = chosenMode;
       modeSel.onchange = function () { setMode(modeSel.value); };
     }
+    [].forEach.call(document.querySelectorAll("#paneSwitch button"), function (b) {
+      b.onclick = function () { showPane(b.getAttribute("data-pane")); };
+    });
     $("optHxml").onclick = function () {
       toggleOptions(false);
       if (!addFile(HxrLibs.HXML, HXML_TEMPLATE)) switchFile(HxrLibs.HXML);
