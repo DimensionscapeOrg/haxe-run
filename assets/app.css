@@ -645,7 +645,23 @@ body:not(.in-editor) #picker { display: none; }
 
 .dash-hint { font-size: .78rem; color: var(--faint); }
 
-.dash-note-detail { color: var(--muted); font-family: var(--mono); font-size: .74rem; }
+.dash-head .dash-note p { font-size: .9rem; color: var(--text); max-width: none; }
+.dash-head .dash-note .dash-note-detail { margin-top: 6px; color: var(--muted); font-family: var(--mono); font-size: .74rem; }
+.dash-note-detail:empty { display: none; }
+.dash-note-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: 600 .84rem var(--font);
+  color: var(--ink);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link-btn:hover { color: var(--accent); }
 
 .dash-note {
   margin-top: 18px;

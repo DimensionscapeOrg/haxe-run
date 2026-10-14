@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "27";
+  var ASSET_VERSION = "28";
 
   /* Light mode, for phones and tablets, very low-memory devices, and any tab
    * that died here before. Mobile browsers kill a tab that uses too much memory
@@ -2272,26 +2272,32 @@
         "A desktop browser works best."
       : "The last visit ran out of memory, so haxe.run is in light mode: the compiler starts when " +
         "you open a playground, and completion is off.";
+    // Message, then the details, then the way out, in that order.
     var note = $("lightNote");
     if (note) {
-      note.textContent = text + " ";
+      note.innerHTML = "";
+      var p = document.createElement("p");
+      p.textContent = text;
+      var detail = document.createElement("p");
+      detail.className = "dash-note-detail";
+      var actions = document.createElement("div");
+      actions.className = "dash-note-actions";
       var back = document.createElement("button");
-      back.className = "btn btn-tiny";
+      back.type = "button";
+      back.className = "link-btn";
       back.textContent = "Switch back to normal mode";
       back.onclick = function () { setMode("normal"); };
-      note.appendChild(back);
+      actions.appendChild(back);
+      note.appendChild(p);
+      note.appendChild(detail);
+      note.appendChild(actions);
       note.hidden = false;
+      // What it was doing and on what, so a crash on someone's phone can be reported.
+      deviceSummary().then(function (dev) {
+        detail.textContent = "Last stage: " + (crashStage || "unknown") + ". Device: " + dev + ".";
+      });
     }
     toast(text, 9000);   // for anyone who lands straight in a playground from a link
-    // What it was doing and on what, so a crash on someone's phone can be reported.
-    deviceSummary().then(function (dev) {
-      if (!note) return;
-      var d = document.createElement("small");
-      d.className = "dash-note-detail";
-      d.textContent = "Last stage: " + (crashStage || "unknown") + ". Device: " + dev + ".";
-      note.appendChild(document.createElement("br"));
-      note.appendChild(d);
-    });
   }
 
   function deviceSummary() {
