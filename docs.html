@@ -8,6 +8,14 @@
 <meta name="description" content="Compile and run Haxe programmatically from the haxe.run playground, with structured diagnostics.">
 <meta name="ai-api" content="window.haxeRun on haxe.run; machine-readable reference at /AGENTS.md and /llms.txt">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<!-- Apply the saved theme before first paint, so returning visitors never see the other theme flash. -->
+<script>
+try {
+  var t = JSON.parse(localStorage.getItem("hxr-theme"));
+  if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", t);
+} catch (e) {}
+</script>
 <style>
   :root {
     --bg:#0b0e14; --panel:#131826; --border:rgba(255,255,255,.09);
@@ -254,13 +262,6 @@
         '<p>Could not load AGENTS.md. Read it directly: <a href="AGENTS.md">AGENTS.md</a>.</p>';
     });
 
-  // Match the playground's theme choice.
-  try {
-    var saved = JSON.parse(localStorage.getItem("hxr-theme"));
-    if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
-    else if (matchMedia("(prefers-color-scheme: light)").matches)
-      document.documentElement.setAttribute("data-theme", "light");
-  } catch (e) {}
 })();
 </script>
 </body>

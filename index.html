@@ -9,6 +9,14 @@
 <meta name="description" content="Compile and run Haxe in your browser with hxc. Live diagnostics, autocomplete, nothing to install.">
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/app.css?v=15">
+<!-- Apply the saved theme before first paint, so returning visitors never see the other theme flash. -->
+<script>
+try {
+  var t = JSON.parse(localStorage.getItem("hxr-theme"));
+  if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", t);
+} catch (e) {}
+</script>
 </head>
 <body>
 
@@ -198,12 +206,12 @@
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script src="assets/examples.js?v=9"></script>
-<script src="assets/openfl-boot.js?v=8"></script>
+<script src="assets/openfl-boot.js?v=9"></script>
 <script src="assets/hxc-assets.js?v=11"></script>
 <script src="assets/hxc-core.js?v=20"></script>
 <script src="assets/hxc-mainthread.js?v=20"></script>
 <script src="assets/libs.js?v=7"></script>
-<script src="assets/app.js?v=59"></script>
+<script src="assets/app.js?v=60"></script>
 <script src="assets/agent-api.js?v=8"></script>
 </body>
 </html>
