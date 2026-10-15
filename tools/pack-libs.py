@@ -12,10 +12,15 @@ hxc.data carries only the standard library, so plain Haxe never downloads these.
 Each library's license file is included and written next to its sources, and
 its extraParams.hxml, if any, is applied wherever it is used. Sources are packed
 exactly as haxelib has them.
+
+The JavaScript an include.xml embeds in html5 builds (Lime's Howler, pako and
+so on) is packed too, under its own path, and listed in "embed" so the compiler
+can put it in front of the output as lime's tools do.
 """
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -26,6 +31,30 @@ LIBS = ["feathersui", "actuate", "openfl", "lime"]
 def libpath(name):
     out = subprocess.run(["haxelib", "libpath", name], capture_output=True, text=True, check=True)
     return out.stdout.strip().splitlines()[-1].strip()
+
+
+# Conditions an html5 build here satisfies; a dependency needing anything else
+# (webgl-debug, stats) is left out, as lime's tools would leave it out by default.
+HTML5_DEFINES = {"html5", "howlerjs"}
+
+
+def embedded_scripts(base):
+    path = os.path.join(base, "include.xml")
+    if not os.path.exists(path):
+        return []
+    found = []
+    for tag in re.findall(r"<dependency\b[^>]*>", open(path, encoding="utf-8").read()):
+        attrs = dict(re.findall(r'([\w-]+)="([^"]*)"', tag))
+        dep = attrs.get("path", "")
+        if attrs.get("embed") != "true" or not dep.endswith(".js") or "unless" in attrs:
+            continue
+        if not set(attrs.get("if", "").split()) <= HTML5_DEFINES or "html5" not in attrs.get("if", ""):
+            continue
+        full = os.path.join(base, dep)
+        if os.path.exists(full):
+            found.append({"path": dep, "allowWebWorkers": attrs.get("allow-web-workers") == "true",
+                          "source": open(full, encoding="utf-8", newline="").read()})
+    return found
 
 
 def pack(name):
@@ -45,7 +74,7 @@ def pack(name):
             files[lic] = open(p, encoding="utf-8", newline="").read()
             break
     extra = os.path.join(base, "extraParams.hxml")
-    return {
+    lib = {
         "name": name,
         "version": meta["version"],
         "license": meta.get("license", ""),
@@ -53,6 +82,10 @@ def pack(name):
         "extraParams": open(extra, encoding="utf-8", newline="").read() if os.path.exists(extra) else "",
         "files": files,
     }
+    embed = embedded_scripts(base)
+    if embed:
+        lib["embed"] = embed
+    return lib
 
 
 def main():

@@ -76,7 +76,8 @@
         throw new TypeError('files["' + n + '"] is ' + typeof files[n] + ", not source text; " + shape);
       }
       var path = String(n).replace(/^\/+/, "");
-      if (!/\.hx(ml)?$/i.test(path)) path += ".hx";   // build.hxml carries libraries and flags
+      // build.hxml carries libraries and flags, assets.json an OpenFL project's assets
+      if (!/\.(hx|hxml|json)$/i.test(path)) path += ".hx";
       out[path] = files[n];
     });
     return out;
@@ -84,11 +85,11 @@
 
   // Entry module: the one declaring `static function main`, preferring Main.hx.
   function inferMain(files) {
-    var names = Object.keys(files);
+    var names = Object.keys(files).filter(function (n) { return /\.hx$/i.test(n); });
     var withMain = names.filter(function (n) {
       return /\bstatic\s+function\s+main\s*\(/.test(files[n]);
     });
-    var pick = withMain.indexOf("Main.hx") > -1 ? "Main.hx" : (withMain[0] || names[0]);
+    var pick = withMain.indexOf("Main.hx") > -1 ? "Main.hx" : (withMain[0] || names[0] || "Main.hx");
     return pick.replace(/\.hx$/, "").replace(/\//g, ".");
   }
 
@@ -282,7 +283,8 @@
       compiler: { name: "hxc", language: "Haxe 4.3", runsIn: "WebAssembly" },
       conventions: {
         files: "object mapping path to source, e.g. { 'Main.hx': 'class Main {...}' }. " +
-               "Subdirectories are package paths: 'geom/Shape.hx' is package geom.",
+               "Subdirectories are package paths: 'geom/Shape.hx' is package geom. " +
+               "'build.hxml' carries libraries and flags; 'assets.json' an OpenFL project's assets (see AGENTS.md).",
         entryPoint: "inferred as the module declaring `static function main`, preferring Main.hx; override with `main`",
         async: "every method returns a Promise; await ready() once before the first call",
         errors: "compile/run resolve (they do not reject) with ok:false and structured diagnostics"

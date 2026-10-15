@@ -21,7 +21,7 @@
   "use strict";
 
   var HXML = "build.hxml";
-  var VERSION = "6";
+  var VERSION = "7";
 
   // Dependencies a library has but doesn't declare in haxelib.json: OpenFL
   // names Lime in its include.xml, which only Lime's tools read.

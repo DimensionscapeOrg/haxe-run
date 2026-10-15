@@ -86,8 +86,8 @@
   // them like any other), bringing their class paths, defines and the init
   // macros from their extraParams.hxml. What's left is what `openfl build html5`
   // would add on top.
-  function openflArgs() {
-    return [
+  function openflArgs(withAssets, bundles) {
+    var args = [
       // Platform + renderer defines that lime's tooling normally injects for an
       // `openfl build html5`. Without a renderer define the html5 backend is
       // #if'd out, so the app boots and traces but never draws (a black stage).
@@ -101,19 +101,60 @@
       "-D", "lime-html5",
       "-D", "lime-webgl",
       "-D", "lime-canvas",
-      "--remap", "flash:openfl",
-      "-D", "disable_preloader_assets"
+      // The rest of what lime's include.xml defines for html5.
+      "-D", "lime-dom",
+      "-D", "howlerjs",
+      "-D", "lime-howlerjs",
+      "-D", "lime-threads",
+      "--remap", "flash:openfl"
     ];
+    // lime's tools define `tools` as their version on every build, and OpenFL
+    // reads it: Assets.getSound, for one, is empty without it.
+    var lime = null;
+    (bundles || []).forEach(function (b) {
+      (b.libs || []).forEach(function (l) { if (l.name === "lime") lime = l; });
+    });
+    args.push("-D", "tools=" + (lime && lime.version || "1"));
+    // As lime's tooling does, the preloader only takes asset libraries when the
+    // project has assets (an assets.json here).
+    if (!withAssets) args.push("-D", "disable_preloader_assets");
+    return args;
   }
 
-  function buildArgs(msg, openfl) {
+  // The scripts a library's include.xml embeds in html5 output (Lime's Howler,
+  // pako, ...), wrapped the way lime's tools wrap them. Lime puts them after the
+  // app, which waits for lime.embed(); this bootstrap starts at once, so they go
+  // first.
+  function embeddedScripts(bundles) {
+    var out = "";
+    (bundles || []).forEach(function (bundle) {
+      (bundle.libs || []).forEach(function (lib) {
+        (lib.embed || []).forEach(function (dep) {
+          out += dep.allowWebWorkers ? dep.source
+            : 'if(typeof self === "undefined" || !self.constructor.name.includes("Worker")) { ' + dep.source + " }";
+          out += "\n";
+        });
+      });
+    });
+    return out;
+  }
+
+  // The class ApplicationMain instantiates: build.hxml's -main when given, else
+  // Main as before, else the module the page inferred.
+  function documentClass(msg, files) {
+    if (msg.documentClass) return msg.documentClass;
+    if (typeof files["Main.hx"] === "string") return "Main";
+    return /^[A-Za-z_][\w.]*$/.test(msg.main || "") ? msg.main : "Main";
+  }
+
+  function buildArgs(msg, openfl, withAssets) {
     var tinfo = TARGETS[msg.target] || TARGETS.js;
     var opts = msg.options || {};
     var entry = openfl ? "ApplicationMain" : msg.main;
 
     var args = ["-main", entry, tinfo.flag, "out." + tinfo.ext,
                 "-D", "message.reporting=classic", "-D", "message.no-color"];
-    if (openfl) args = args.concat(openflArgs());
+    if (openfl) args = args.concat(openflArgs(withAssets, msg.libs));
     // Libraries the page loaded on demand (assets/libs/*.json), written under
     // /libs/<name> by _writeLibs; the same class path and define -lib would add.
     (msg.libs || []).forEach(function (bundle) {
@@ -413,7 +454,7 @@
   // /work holds exactly the files of this request. Anything left over from an
   // earlier compile would still resolve, so a module the user deleted or
   // renamed would keep compiling.
-  Engine.prototype._writeFiles = function (files, openfl) {
+  Engine.prototype._writeFiles = function (files, openfl, mainClass, manifest) {
     var FS = this._mod.FS;
     (function clear(dir) {
       FS.readdir(dir).forEach(function (name) {
@@ -431,7 +472,8 @@
       FS.writeFile(full, files[path]);
     });
     if (openfl && global.HXR_OPENFL_BOOT) {
-      FS.writeFile("/work/ApplicationMain.hx", global.HXR_OPENFL_BOOT);
+      FS.writeFile("/work/ApplicationMain.hx", global.HXR_OPENFL_BOOT.replace(/::MAIN::/g, mainClass || "Main"));
+      if (manifest) FS.writeFile("/work/ManifestResources.hx", manifest);
     }
   };
 
@@ -474,12 +516,20 @@
     // by ApplicationMain, which lime tooling normally generates. Inject that
     // bootstrap and compile it instead of the user's module.
     var openfl = !!msg.openfl || usesOpenFL(files);
-    var args = buildArgs(msg, openfl);
+    var assetsFile = global.HXR_OPENFL_ASSETS && global.HXR_OPENFL_ASSETS.FILE;
+    var assets = null;
+    if (assetsFile && typeof files[assetsFile] === "string") {
+      assets = openfl ? global.HXR_OPENFL_ASSETS.generate(files[assetsFile]) : {
+        source: null, diagnostics: [{ severity: "warning", file: assetsFile, line: 1, column: 1, endLine: 1, endColumn: 2,
+                                      message: "assets.json is only read by OpenFL projects", code: "assets" }]
+      };
+    }
+    var args = buildArgs(msg, openfl, !!(assets && assets.source));
 
     var m = this._mod;
     this._out.length = 0;
     this._writeLibs(msg.libs);
-    this._writeFiles(files, openfl);
+    this._writeFiles(files, openfl, documentClass(msg, files), assets && assets.source);
 
     var spBefore = this.sp();
     // Builds that export stackSave/stackRestore can give back whatever callMain
@@ -513,6 +563,7 @@
     }
 
     var diags = parseDiags(this._out);
+    if (assets) diags = assets.diagnostics.concat(diags);
     var hadError = diags.some(function (d) { return d.severity === "error"; });
     var ok = exitCode === 0 && !hadError;
 
@@ -535,11 +586,12 @@
     if (ok && tinfo.single) {
       try { outputs[outName] = m.FS.readFile("/work/" + outName, { encoding: "utf8" }); } catch (e) {}
     }
+    if (openfl && outputs[outName]) outputs[outName] = embeddedScripts(msg.libs) + outputs[outName];
 
     var log = this._out.map(function (l) {
       return { level: l.stream === "err" ? "info" : "trace", text: l.text };
     });
-    var names = Object.keys(files), typeCount = 0;
+    var names = Object.keys(files).filter(function (n) { return /\.hx$/i.test(n); }), typeCount = 0;
     names.forEach(function (n) {
       typeCount += (files[n].match(/\b(class|enum|interface|typedef|abstract)\s+\w/g) || []).length;
     });

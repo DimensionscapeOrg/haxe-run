@@ -98,7 +98,7 @@
 
   var REQUEST_TIMEOUT_MS = 45000;
   var BOOT_TIMEOUT_MS = 60000;
-  var ASSET_VERSION = "29";
+  var ASSET_VERSION = "30";
 
   /* Light mode, for phones and tablets, very low-memory devices, and any tab
    * that died here before. Mobile browsers kill a tab that uses too much memory
@@ -480,6 +480,18 @@
     ""
   ].join("\n");
 
+  // An OpenFL project's assets, as lime's tools would take them from project.xml.
+  var ASSETS_TEMPLATE = [
+    "{",
+    "  \"rootPath\": \"https://cdn.jsdelivr.net/gh/owner/repo@main/Assets/\",",
+    "  \"assets\": {",
+    "    \"images/logo.png\": \"images/logo.png\",",
+    "    \"soundTheme\": { \"path\": \"sounds/theme.mp3\", \"type\": \"music\" }",
+    "  }",
+    "}",
+    ""
+  ].join("\n");
+
   // A module path from a file path, minus whichever -cp folder holds it.
   function stripClassPath(main, args) {
     for (var i = 0; i + 1 < args.length; i++) {
@@ -505,7 +517,7 @@
       p.libs = r.bundles;
       p.extraArgs = r.args;
       p.openfl = r.openfl;
-      if (r.main) p.main = r.main;
+      if (r.main) p.main = p.documentClass = r.main;
       else if (p.main) p.main = stripClassPath(p.main, r.args);
       if (r.bundles.length || r.openfl) p.timeoutMs = LIB_TIMEOUT_MS;
       p.projectDiagnostics = r.diagnostics;
@@ -786,6 +798,9 @@
     });
   }
 
+  // build.hxml and assets.json sit beside the modules but aren't counted as ones.
+  function isModule(name) { return /\.hx$/i.test(name); }
+
   function entryModule() {
     var names = fileNames().filter(function (n) { return /\.hx$/i.test(n); });
     var hit = names.filter(function (n) {
@@ -800,7 +815,8 @@
     state.files[name] = source || "";
     if (state.monaco) {
       state.models[name] = state.monaco.editor.createModel(
-        state.files[name], /\.hxml$/i.test(name) ? "hxml" : "haxe", state.monaco.Uri.parse("file:///" + name)
+        state.files[name], /\.hxml$/i.test(name) ? "hxml" : (/\.json$/i.test(name) ? "json" : "haxe"),
+        state.monaco.Uri.parse("file:///" + name)
       );
       state.models[name].onDidChangeContent(onEdit);
     }
@@ -836,7 +852,7 @@
 
   function normalizeName(name) {
     name = String(name).trim().replace(/^\/+/, "");
-    if (!/\.hx(ml)?$/i.test(name)) name += ".hx";
+    if (!/\.(hx|hxml|json)$/i.test(name)) name += ".hx";
     return name.replace(/[^\w./-]/g, "");
   }
 
@@ -969,7 +985,7 @@
     (window.HXR_EXAMPLES || []).forEach(function (ex) {
       var o = document.createElement("option");
       o.value = "example:" + ex.id;
-      var n = Object.keys(ex.files).length;
+      var n = Object.keys(ex.files).filter(isModule).length;
       o.textContent = ex.name + (n > 1 ? "  (" + n + " modules)" : "");
       gEx.appendChild(o);
     });
@@ -985,7 +1001,7 @@
       names.forEach(function (n) {
         var o = document.createElement("option");
         o.value = "saved:" + n;
-        var count = Object.keys(saved[n].files).length;
+        var count = Object.keys(saved[n].files).filter(isModule).length;
         o.textContent = n + (count > 1 ? "  (" + count + " modules)" : "");
         gS.appendChild(o);
       });
@@ -2120,6 +2136,11 @@
         name = normalizeName(name);
         if (state.files[name] !== undefined) { switchFile(name); renderFileTabs(); return; }
         if (/\.hxml$/i.test(name)) { addFile(name, HXML_TEMPLATE); renderFileTabs(); return; }
+        if (/\.json$/i.test(name)) {
+          addFile(name, /(^|\/)assets\.json$/i.test(name) ? ASSETS_TEMPLATE : "{\n}\n");
+          renderFileTabs();
+          return;
+        }
         var cls = name.replace(/\.hx$/, "").split("/").pop();
         var pkg = name.indexOf("/") > -1
           ? "package " + name.replace(/\/[^/]+$/, "").replace(/\//g, ".") + ";\n\n" : "";

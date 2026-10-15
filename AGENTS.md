@@ -174,13 +174,48 @@ first time a project needs them, about 1.4 MB, and cached.
 Two consequences worth planning for:
 
 - An OpenFL project has no `static function main`. It is a `Sprite` subclass, and
-  the class is instantiated as the document class.
+  the class is instantiated as the document class: `Main`, or whatever
+  `-main` names in `build.hxml`.
 - These compiles are much slower than plain Haxe, because the whole framework is
   typed from source. Raise `timeoutMs` accordingly.
 
 `-lib feathersui`, or importing anything from `feathers.*`, does the same and
 also loads [Feathers UI](https://feathersui.com/) and its dependency Actuate.
 These builds take longer again, around 25 seconds, so allow `timeoutMs` for it.
+
+### Assets
+
+Images, sounds, fonts and text an OpenFL project loads through `openfl.Assets`
+are listed in an `assets.json` file, standing in for the `<assets>` of a
+`project.xml`. Each asset id maps to a URL:
+
+```json
+{
+  "rootPath": "https://cdn.jsdelivr.net/gh/you/repo@main/Assets/",
+  "assets": {
+    "images/logo.png": "images/logo.png",
+    "fonts/Title.ttf": "fonts/Title.ttf",
+    "soundTheme": { "path": "sounds/theme.mp3", "type": "music" }
+  }
+}
+```
+
+- `rootPath` is optional and prefixes every relative path. An absolute URL is
+  used as it is.
+- The type comes from the extension (png, jpg, gif and webp are images; mp3,
+  ogg and wav are sounds; ttf, otf, woff and woff2 are fonts; txt, json, xml
+  and csv are text; anything else is binary). Give `type` to override it:
+  `image`, `sound`, `music`, `font`, `text` or `binary`.
+- Every asset is preloaded before the document class is created, as in a lime
+  build, so `Assets.getBitmapData` and friends work straight away. Set
+  `"preload": false` to load one later instead. `size` in bytes only feeds the
+  preloader's progress.
+- A font's family name is its file name without the extension, or `fontName`.
+- The files are fetched by the page that runs the program, so their host has to
+  allow cross-origin reads. GitHub through jsDelivr and GitHub Pages both do.
+
+The Pirate Pig example is the OpenFL demo of the same name with its assets
+listed this way.
 
 OpenFL renders to a canvas, so `run()` will usually return only whatever the
 program `trace`s, not a picture. To see it rendered, drive the visible editor
