@@ -2,3 +2,5 @@
 *.wasm binary
 *.data binary
 *.png binary
+*.mp3 binary
+*.ttf binary
